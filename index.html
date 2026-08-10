@@ -1,0 +1,264 @@
+﻿<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Abzugsband Auslegung (inkl. VDI 2322)</title>
+
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <div class="tool-container">
+        <h2>Auslegung Dosierabzugsband (DAB)</h2>
+
+        <div class="tab-buttons">
+            <button class="tab-btn active" onclick="switchTab('eingaben')">Eingaben & Geometrie</button>
+            <button class="tab-btn" onclick="switchTab('ergebnisse')">Ergebnisse & Berechnungen</button>
+        </div>
+
+        <div id="eingaben" class="tab-content active">
+
+            <div class="chapter-card">
+                <h3 class="chapter-title">
+                    3. Mechanik, Widerstände & Abzug
+                    <button class="info-btn" style="float: right; width: auto; padding: 2px 10px; border-radius: 4px;" onclick="openAbzugModal()">Theorie Abzugskraft ℹ️</button>
+                </h3>
+                <div class="canvas-wrapper">
+                    <canvas id="conveyorCanvas" width="900" height="380"></canvas>
+                    <button class="anim-btn" id="btnAnimToggle" onclick="toggleAnimation()">⏸ Pause Animation</button>
+                    <div class="canvas-slider-container">
+                        <label>v = <span id="canvas_v_val">0.38</span> m/s</label>
+                        <input type="range" id="canvas_v_slider" min="0.1" max="2.0" step="0.01" value="0.38" oninput="syncSpeed(this.value)">
+                    </div>
+                </div>
+
+                <div style="display:flex; justify-content: space-between; gap:20px;">
+                    <div style="flex: 1;">
+                        <div class="input-group">
+                            <label id="lbl_L">Achsabstand / Länge (\(L\))</label>
+                            <input type="number" id="in_L" value="3.15" step="0.01" min="0" oninput="updateGeometry()">
+                            <span class="unit">m</span>
+                        </div>
+                        <div class="input-group">
+                            <label id="lbl_B">Gurtbreite (\(B\))</label>
+                            <input type="number" id="in_B" value="0.65" step="0.01" min="0" oninput="updateGeometry()">
+                            <span class="unit">m</span>
+                        </div>
+                        <div class="input-group">
+                            <label id="lbl_b">Förderbreite lichte Weite (\(b\))</label>
+                            <input type="number" id="in_b" value="0.45" step="0.01" min="0" oninput="updateGeometry()">
+                            <span class="unit">m</span>
+                        </div>
+                        <div class="input-group">
+                            <label id="lbl_alpha">Neigungswinkel (\(\alpha\))</label>
+                            <input type="number" id="in_alpha" value="2.00" step="0.01" min="0" oninput="updateGeometry()">
+                            <span class="unit">°</span>
+                        </div>
+                        <div class="input-group">
+                            <label id="lbl_DU">Ø Umlenktrommel links (\(D_U\))</label>
+                            <input type="number" id="in_DU" value="0.193" step="0.001" min="0" oninput="updateGeometry()">
+                            <span class="unit">m</span>
+                        </div>
+                        <div class="input-group">
+                            <label id="lbl_DA">Ø Antriebstrommel rechts (\(D_A\))</label>
+                            <input type="number" id="in_DA" value="0.219" step="0.001" min="0" oninput="updateGeometry()">
+                            <span class="unit">m</span>
+                        </div>
+                    </div>
+                    <div style="flex: 1;">
+                        <div class="input-group">
+                            <label id="lbl_h_silo">Silo-Füllhöhe (\(h_{Silo}\))</label>
+                            <input type="number" id="in_h_silo" value="3.00" step="0.1" min="0" title="Relevant für den Bodendruck">
+                            <span class="unit">m</span>
+                        </div>
+                        <div class="input-group">
+                            <label id="lbl_L_box">Einlauflänge Kasten (\(L_{Box}\))</label>
+                            <input type="number" id="in_L_box" value="0.55" step="0.05" min="0.30" max="1.00" oninput="updateGeometry()" onchange="resetBoxParticles()">
+                            <span class="unit">m</span>
+                        </div>
+                        <div class="input-group">
+                            <label id="lbl_h_klappe_max">Max. Schütthöhe Kasten (\(h_{Klappe,max}\))</label>
+                            <input type="number" id="in_h_klappe_max" value="0.32" step="0.01" min="0.10" max="0.50" oninput="updateGeometry()">
+                            <span class="unit">m</span>
+                        </div>
+                        <div class="input-group">
+                            <label id="lbl_h_klappe">Schütthöhe Schieber (\(h_{Klappe}\))</label>
+                            <input type="number" id="in_h_klappe" value="0.32" step="0.01" min="0" oninput="updateGeometry()">
+                            <span class="unit">m</span>
+                        </div>
+                        <div class="input-group" style="margin-top:10px;">
+                            <span class="live-display" id="live_H_display" style="margin-left:0;">Förderhöhe (H): 0.110 m</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="chapter-card">
+                <h3 class="chapter-title">2. Material & Durchsatz</h3>
+                <div style="display:flex; justify-content: space-between; gap:20px;">
+                    <div style="flex: 1;">
+                        <div class="input-group">
+                            <label>Fördergeschwindigkeit (\(v\))</label>
+                            <input type="number" id="in_v" value="0.38" step="0.01" min="0.1" max="2.0" oninput="syncSpeed(this.value)">
+                            <span class="unit">m/s</span>
+                        </div>
+                        <div class="input-group">
+                            <label>Schüttdichte (\(\rho\))</label>
+                            <input type="number" id="in_rho" value="1600" step="10" min="0" oninput="updateLiveConversion()">
+                            <span class="unit">kg/m³</span>
+                        </div>
+                    </div>
+                    <div style="flex: 1;">
+                        <div class="toggle-group">
+                            <label><input type="radio" name="flow_mode" value="geom" checked onchange="toggleFlowMode()"> Aus Abzugs-Geometrie</label>
+                            <label><input type="radio" name="flow_mode" value="vol" onchange="toggleFlowMode()"> Vorgabe in m³/h</label>
+                            <label><input type="radio" name="flow_mode" value="mass" onchange="toggleFlowMode()"> Vorgabe in kg/s</label>
+                        </div>
+
+                        <div id="container_geom" class="input-group">
+                            <span class="live-display" id="live_geom_display" style="margin-left:0;">Theoretischer Durchsatz: 88.92 m³/h (39.52 kg/s)</span>
+                        </div>
+                        <div id="container_vol" class="input-group" style="display:none;">
+                            <label>Volumenstrom \( (I_V) \)</label>
+                            <input type="number" id="in_Iv" value="137.5" step="1" min="0" oninput="updateLiveConversion()">
+                            <span class="unit">m³/h</span>
+                            <span class="live-display" id="live_mass_display">entspricht: 61.11 kg/s</span>
+                        </div>
+                        <div id="container_mass" class="input-group" style="display:none;">
+                            <label>Massenstrom \( (I_{mN}) \)</label>
+                            <input type="number" id="in_Im" value="61.11" step="0.1" min="0" oninput="updateLiveConversion()">
+                            <span class="unit">kg/s</span>
+                            <span class="live-display" id="live_vol_display">entspricht: 137.5 m³/h</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="chapter-card">
+                <h3 class="chapter-title">3. Mechanik, Widerstände & Abzug</h3>
+                <div style="display:flex; justify-content: space-between; gap:20px;">
+                    <div style="flex: 1;">
+                        <div class="input-group">
+                            <label>Streckenlast Anlage leer (\(m_{leer}'\))</label>
+                            <input type="number" id="in_m_leer" value="21.0" step="0.1" min="0">
+                            <span class="unit">kg/m</span>
+                        </div>
+                        <div class="input-group">
+                            <label>Längenzuschlag Nebenwiderst. (\(C\))</label>
+                            <input type="number" id="in_C" value="2.0" step="0.1" min="1">
+                            <span class="unit">-</span>
+                        </div>
+                        <div class="input-group">
+                            <label>Wirkungsgrad Antrieb (\(\eta\))</label>
+                            <input type="number" id="in_eta" value="0.75" step="0.01" min="0.1" max="1">
+                            <span class="unit">-</span>
+                        </div>
+                    </div>
+                    <div style="flex: 1;">
+                        <div class="input-group">
+                            <label>Reibwert Gurt/Material (\(\mu_G\))</label>
+                            <input type="number" id="in_mu_g" value="0.60" step="0.05" min="0">
+                            <span class="unit">-</span>
+                            <button class="info-btn" type="button" onclick="openModal('modal_mu_g')">i</button>
+                        </div>
+
+                        <div class="input-group">
+                            <label>Innere Reibung Material (\(\mu_i\))</label>
+                            <input type="number" id="in_mu_i" value="0.50" step="0.05" min="0">
+                            <span class="unit">-</span>
+                            <button class="info-btn" type="button" onclick="openModal('modal_mu_i')">i</button>
+                        </div>
+
+                        <p style="font-size:0.85em; color:#666; margin-top:10px;">* Zur Ermittlung der zusätzlichen Abzugskraft.</p>
+                    </div>
+                </div>
+            </div>
+
+            <button class="calc-btn" onclick="calculate()">DAB-Gesamtberechnung durchführen</button>
+        </div>
+
+        <div id="ergebnisse" class="tab-content">
+            <div class="result-row"><div class="result-item"><div class="result-label">Streckenlast Fördergut (\(m_L'\)):</div><div class="result-value" id="out_mL">- kg/m</div><button class="info-btn" onclick="toggleInfo('info_mL')">i</button><div class="formula-box" id="info_mL"></div></div></div>
+            <div class="result-row"><div class="result-item"><div class="result-label">Zusätzliche Abzugskraft (\(F_{Abzug}\)):</div><div class="result-value" id="out_FAbz">- N</div><button class="info-btn" onclick="toggleInfo('info_FAbz')">i</button><div class="formula-box" id="info_FAbz"></div></div></div>
+            <div class="result-row"><div class="result-item"><div class="result-label">Steigungswiderstand (\(F_{St}\)):</div><div class="result-value" id="out_FSt">- N</div><button class="info-btn" onclick="toggleInfo('info_FSt')">i</button><div class="formula-box" id="info_FSt"></div></div></div>
+            <div class="result-row"><div class="result-item"><div class="result-label">Hauptwiderstand (\(F_H\)):</div><div class="result-value" id="out_FH">- N</div><button class="info-btn" onclick="toggleInfo('info_FH')">i</button><div class="formula-box" id="info_FH"></div></div></div>
+            <div class="result-row"><div class="result-item"><div class="result-label">Gesamtwiderstand (\(F_W\)):</div><div class="result-value" id="out_FW">- N</div><button class="info-btn" onclick="toggleInfo('info_FW')">i</button><div class="formula-box" id="info_FW"></div></div></div>
+            <div class="result-row"><div class="result-item"><div class="result-label">Leistung an Trommel (\(P_W\)):</div><div class="result-value" id="out_PW">- W</div><button class="info-btn" onclick="toggleInfo('info_PW')">i</button><div class="formula-box" id="info_PW"></div></div></div>
+            <div class="result-row"><div class="result-item"><div class="result-label">Erf. Motorleistung (\(P_{M,erf}\)):</div><div class="result-value" id="out_PM">- kW</div><button class="info-btn" onclick="toggleInfo('info_PM')">i</button><div class="formula-box" id="info_PM"></div></div></div>
+        </div>
+    </div>
+
+    <!-- NEU: Das Modal / Die Infoseite für die Abzugskraft -->
+    <div id="modal_abzug" class="modal-overlay" style="display:none;">
+        <div class="modal-content">
+            <span class="modal-close" onclick="document.getElementById('modal_abzug').style.display='none'">&times;</span>
+            <h2>Theorie: Berechnung der Abzugskraft</h2>
+            <p class="modal-note"><strong>Hinweis zur VDI 2322:</strong> In Abschnitt 4 ("Allgemeines") der VDI 2322 (2017) wird explizit darauf hingewiesen: <em>"Abzugsförderer werden in dieser Richtlinie nicht behandelt."</em> Die hier angewandte Berechnung basiert daher auf den Prinzipien der klassischen Schüttgutmechanik.</p>
+
+            <!-- BREADCRUMB: 2026-08-10 | UI Fix: Inline-MathJax Syntax in Modal-Überschriften -->
+            <h3>1. Bodendruck der Materialsäule (\(F_{Boden}\))</h3>
+            <p>Das Gewicht des Schüttguts im Silo bzw. Einlaufkasten drückt vertikal auf den Fördergurt. Unter der vereinfachten Annahme eines hydrostatischen Drucks (ohne Silo-Wandreibungseffekte nach Janssen) berechnet sich die Normalkraft aus:</p>
+            <div class="modal-formula">
+                $$ F_{Boden} = \rho \cdot g \cdot h_{Silo} \cdot L_{box} \cdot b $$
+            </div>
+
+            <h3>2. Gurt-Bodenreibung (\(F_{Reibung}\))</h3>
+            <p>Um das Material unter der ruhenden Säule wegzuziehen, muss die Haft-/Gleitreibung zwischen dem Schüttgut und dem Gurtmaterial überwunden werden:</p>
+            <div class="modal-formula">
+                $$ F_{Reibung} = F_{Boden} \cdot \mu_G $$
+            </div>
+
+            <h3>3. Innerer Scherwiderstand am Schieber (\(F_{Scherung}\))</h3>
+            <p>Am Auslassschieber muss das ablaufende Materialbett von der ruhenden Materialsäule im Kasten abgeschert werden. Hier wirkt die innere Reibung des Schüttguts auf der Querschnittsfläche des Schieberspannungsfeldes:</p>
+            <div class="modal-formula">
+                $$ F_{Scherung} = (\rho \cdot g \cdot h_{Silo}) \cdot (b \cdot h_{Klappe}) \cdot \mu_i $$
+            </div>
+
+            <h3>Gesamte zusätzliche Abzugskraft (\(F_{Abzug}\))</h3>
+            <p>Die gesamte Widerstandskraft, die zusätzlich zu den regulären Förderwiderständen vom Antrieb überwunden werden muss, ist die Summe aus Gurtreibung und Scherkraft:</p>
+            <div class="modal-formula">
+                $$ F_{Abzug} = F_{Reibung} + F_{Scherung} $$
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal 1: Reibwert Gurt/Material -->
+    <div id="modal_mu_g" class="modal-overlay" style="display:none;">
+        <div class="modal-content">
+            <span class="modal-close" onclick="closeModal('modal_mu_g')">&times;</span>
+            <h2>Reibwert Schüttgut auf Fördergurt (\(\mu_G\))</h2>
+            <p>Beschreibt die Gleitreibung zwischen der Deckplatte des Fördergurts (meist Gummi/PVC) und dem Schüttgut (Kies/Gestein). Er bestimmt, wie viel Horizontalkraft auf das Schüttgut übertragen wird, um es unter der ruhenden Säule wegzuziehen.</p>
+
+            <h3>Ermittlung & Annahme (\(\mu_G = 0{,}60\))</h3>
+            <ul>
+                <li><strong>Ermittlung:</strong> Durch Scherversuche (Jenike-Schergerät) oder Neigungswinkelmessung an einer Plattenprobe.</li>
+                <li><strong>Praxiswert:</strong> Für trockenes bis leicht feuchtes mineralisches Schüttgut (Kies, Sand, Gebrochenes Gestein) auf Gummideckplatten liegt \(\mu_G\) typischerweise zwischen 0,50 und 0,70. Mit <strong>0,60</strong> liegst du auf der sicheren, konservativen Seite für die Motorauslegung.</li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- Modal 2: Innere Reibung Material -->
+    <div id="modal_mu_i" class="modal-overlay" style="display:none;">
+        <div class="modal-content">
+            <span class="modal-close" onclick="closeModal('modal_mu_i')">&times;</span>
+            <h2>Innerer Reibwert des Schüttguts (\(\mu_i = \tan\phi_i\))</h2>
+            <p>Beschreibt das Scherverhalten des Schüttguts in sich selbst. Er bestimmt die Kraft, die erforderlich ist, um das abgezogene Materialbett am Schieberauslass von der darüber ruhenden Materialsäule im Kasten abzuscheren.</p>
+
+            <h3>Ermittlung & Annahme (\(\mu_i = 0{,}50\))</h3>
+            <ul>
+                <li>Verknüpft mit dem inneren Reibungswinkel \(\phi_i\) über \(\mu_i = \tan(\phi_i)\).</li>
+                <li><strong>Ermittlung:</strong> Im Triaxialtest oder Direct Shear Test. Ein Reibwert von 0,50 entspricht einem inneren Reibungswinkel von ca. \(\phi_i \approx 26{,}5^\circ\).</li>
+                <li><strong>Praxiswert:</strong> Für rolligen bis leicht verhakenden Kies/Sand ist dieser Wert realistisch, da dynamische Erschütterungen beim Abzug den statischen Reibungswinkel (der meist bei 30–35° liegt) auf diesen effektiven Fließ-Scherwert reduzieren.</li>
+            </ul>
+        </div>
+    </div>
+
+    <script src="ui_math_logic.js"></script>
+    <script src="canvas_physics.js"></script>
+
+
+
+</body>
+</html>
