@@ -61,15 +61,20 @@ class Particle {
     }
 }
 
+/*
+ * [BREADCRUMB: 2026-08-11]
+ * DOMÄNE: Canvas Physik-Engine - toggleAnimation
+ * UPDATE: Text durch reine Icon-Symbole ersetzt (▶ / ❚❚).
+ */
 function toggleAnimation() {
     isAnimating = !isAnimating;
     const btn = document.getElementById('btnAnimToggle');
     if (isAnimating) {
-        btn.innerText = "⏸ Pause Animation";
+        btn.innerText = "❚❚";
         lastTime = performance.now();
         animId = requestAnimationFrame(renderLoop);
     } else {
-        btn.innerText = "▶️ Start Animation";
+        btn.innerText = "▶";
         cancelAnimationFrame(animId);
         animId = null;
     }
@@ -139,42 +144,14 @@ function initParticles() {
     for (let k = 0; k < 60; k++) updatePhysics(0.016, true);
 }
 
-/*
- * [BREADCRUMB: 2026-08-11]
- * DOMÄNE: Canvas Animation & Rendering - Fixed Timestep Accumulator
- * UPDATE: 
- * - Entkopplung von Physik und Bildwiederholrate (FPS-Unabhängigkeit):
- *   Die Physik wird in festen Scheiben von 1/60s (FIXED_DT) berechnet.
- *   Verhindert Abstürze/Explosionen auf Handys (30/120Hz) und schwächeren Rechnern.
- */
-/*
- * [BREADCRUMB: 2026-08-11]
- * DOMÄNE: Canvas Animation & Rendering - Fixed Timestep Accumulator (100 Hz)
- * UPDATE: 
- * - FIXED_DT auf 1/100 (100 Hz) gesetzt für maximale Stabilität.
- * - Akkumulator garantiert identisches Verhalten auf 60Hz, 120Hz und 244Hz Displays.
- */
-let physicsAccumulator = 0;
-const FIXED_DT = 1 / 100; // Fester Physik-Schritt (100 Hz)
-
 function renderLoop(timestamp) {
     if (!isAnimating) return;
     if (!lastTime) lastTime = timestamp;
-    
-    let frameTime = (timestamp - lastTime) / 1000;
+    let dt = (timestamp - lastTime) / 1000;
+    if (dt > 0.1) dt = 0.1; 
     lastTime = timestamp;
 
-    // Schutz vor Rucklern (max. 0.25s nachholen)
-    if (frameTime > 0.25) frameTime = 0.25;
-
-    physicsAccumulator += frameTime;
-
-    // Arbeitet die Physik in exakten 100Hz-Paketen ab
-    while (physicsAccumulator >= FIXED_DT) {
-        updatePhysics(FIXED_DT, false);
-        physicsAccumulator -= FIXED_DT;
-    }
-
+    updatePhysics(dt, false);
     drawConveyorCanvas();
     animId = requestAnimationFrame(renderLoop);
 }
@@ -305,11 +282,13 @@ function renderLoop(timestamp) {
  */
 /*
  * [BREADCRUMB: 2026-08-11]
- * DOMÄNE: Canvas Physik-Engine & Animation - updatePhysics (Spatial Hash Grid)
+ * DOMÄNE: Canvas Physik-Engine & Animation - updatePhysics (Friction & Rest Angle)
  * UPDATE: 
- * - O(N^2) Bottleneck entfernt: PBD-Kollisionen und Viscous Shear nutzen nun ein Spatial Grid.
- * - Performance-Boost um >2000%, da Steine nur noch ihre direkten Zell-Nachbarn prüfen.
- * - Partikel-Cap auf 3500 reduziert, um ältere Single-Core CPUs (wie Xeon) massiv zu entlasten.
+ * - Reibwerte (mu_g, mu_i) direkt in die Physik-Engine integriert.
+ * - 'mu_i' dämpft die horizontale PBD-Positionskorrektur (erzeugt echten Schüttwinkel).
+ * - 'mu_g' erzwingt starke Haftreibung der untersten Schicht an der Gurtgeschwindigkeit.
+ * - "Liquid Flow" Bug bei stehendem Band (v=0) behoben: Material bildet nun einen stabilen Haufen und fließt nicht unendlich weiter.
+ * - Spawner pausiert bei v=0, um Überdruck im Kasten zu vermeiden.
  */
 function updatePhysics(dt, isWarmup = false) {
     const v_belt = isWarmup ? 0 : getVal('in_v', 0);
@@ -319,6 +298,10 @@ function updatePhysics(dt, isWarmup = false) {
     const L_box = getVal('in_L_box', 0.55);
     const h_klappe = getVal('in_h_klappe', 0.32);
     const h_klappe_max = getVal('in_h_klappe_max', 0.32);
+
+    // NEU: Reibwerte direkt aus der UI abrufen
+    const mu_g = getVal('in_mu_g', 0.60);
+    const mu_i = getVal('in_mu_i', 0.50);
 
     const DU = getVal('in_DU', 0.193);
     const DA = getVal('in_DA', 0.219);
@@ -381,32 +364,34 @@ function updatePhysics(dt, isWarmup = false) {
             }
         }
 
-        const spawnBatchSize = Math.max(1, Math.min(4, Math.ceil(anim_v_belt * 1.8)));
+        // NEU: Spawner schaltet bei v=0 ab, damit kein neuer Druck im Kasten entsteht!
+        const spawnBatchSize = anim_v_belt > 0.01 ? Math.max(1, Math.min(4, Math.ceil(anim_v_belt * 1.8))) : 0;
 
-        for (let c = 0; c < numCols; c++) {
-            let px = 0.02 + c * colWidth;
-            let beltY = U_top_y + Math.tan(alpha) * px;
-            let targetY = beltY + physicsBoxHeight;
+        if (spawnBatchSize > 0) {
+            for (let c = 0; c < numCols; c++) {
+                let px = 0.02 + c * colWidth;
+                let beltY = U_top_y + Math.tan(alpha) * px;
+                let targetY = beltY + physicsBoxHeight;
 
-            let currentMaxY = colMaxY[c];
-            if (currentMaxY === 0) currentMaxY = beltY;
+                let currentMaxY = colMaxY[c];
+                if (currentMaxY === 0) currentMaxY = beltY;
 
-            let gap = targetY - currentMaxY;
+                let gap = targetY - currentMaxY;
 
-            // PERFORMANCE-CAP: Reduziert auf max 3500 Partikel
-            if (gap > currentSimRadius * 1.8 && particles.length < 3500) {
-                let numToSpawn = Math.min(spawnBatchSize, Math.floor(gap / (currentSimRadius * 1.5)));
-                for (let s = 0; s < numToSpawn; s++) {
-                    let py = targetY - (s * currentSimRadius * 1.5);
-                    let newP = new Particle(px + (Math.random() - 0.5) * 0.005, py, currentSimRadius);
-                    newP.vy = -1.0;
-                    particles.push(newP);
+                if (gap > currentSimRadius * 1.8 && particles.length < 8000) {
+                    let numToSpawn = Math.min(spawnBatchSize, Math.floor(gap / (currentSimRadius * 1.5)));
+                    for (let s = 0; s < numToSpawn; s++) {
+                        let py = targetY - (s * currentSimRadius * 1.5);
+                        let newP = new Particle(px + (Math.random() - 0.5) * 0.005, py, currentSimRadius);
+                        newP.vy = -1.0;
+                        particles.push(newP);
+                    }
                 }
             }
         }
     }
 
-    // --- 1. INTEGRATION ---
+    // --- 1. INTEGRATION (Vorhersage der Bewegung) ---
     const targetVx = anim_v_belt * Math.cos(alpha);
     const targetVy = anim_v_belt * Math.sin(alpha);
 
@@ -415,13 +400,22 @@ function updatePhysics(dt, isWarmup = false) {
         p.prevY = p.y;
 
         if (p.state === 'box') {
-            p.vy -= 25.0 * dt;
+            p.vy -= 25.0 * dt; // Schwerkraft
             if (p.vy < -2.0) p.vy = -2.0;
 
             let beltY = U_top_y + Math.tan(alpha) * p.x;
-            if (p.y <= beltY + p.r + 0.05) {
-                p.vx += (targetVx - p.vx) * 0.5;
-                p.vy += (targetVy - p.vy) * 0.5;
+            let isTouchingBelt = (p.y <= beltY + p.r + 0.05);
+
+            if (isTouchingBelt) {
+                // Gurt-Reibung: Zwingt Partikel an die Band-Geschwindigkeit
+                let beltFriction = Math.min(1.0, mu_g * 1.2);
+                p.vx += (targetVx - p.vx) * beltFriction;
+                p.vy += (targetVy - p.vy) * beltFriction;
+            }
+
+            // Statische Haftreibung bei stehendem Band
+            if (anim_v_belt < 0.01) {
+                p.vx *= (1 - mu_i * 0.1);
             }
 
             p.x += p.vx * dt;
@@ -438,98 +432,65 @@ function updatePhysics(dt, isWarmup = false) {
             if (dist < minDist && p.y > cy_A - minDist) {
                 p.x = cx_A + (dx / dist) * minDist;
                 p.y = cy_A + (dy / dist) * minDist;
-                p.vx += ((dy / dist) * anim_v_belt - p.vx) * 0.8;
-                p.vy += ((-dx / dist) * anim_v_belt - p.vy) * 0.8;
+                // Abrutschen an der Trommel verhindern
+                p.vx += ((dy / dist) * anim_v_belt - p.vx) * mu_g;
+                p.vy += ((-dx / dist) * anim_v_belt - p.vy) * mu_g;
             }
             if (p.y < cy_A - rA_outer - 2.0 || p.x > L + 1.5) p.dead = true;
         }
     }
 
-    // --- 2. STARRER PBD-SOLVER MIT SPATIAL GRID ---
-    const SOLVER_ITERATIONS = 8;
-    const CELL_SIZE = currentSimRadius * 2.2;
-    const GRID_W = 200; 
-    const GRID_H = 100;
-    const OFFSET_X = 2.0; 
-    const OFFSET_Y = 2.0;
-
-    // Grid global einmalig instanziieren (extrem wichtig, um Garbage Collection Hänger zu vermeiden)
-    if (typeof window.physGrid === 'undefined') {
-        window.physGrid = new Array(GRID_W * GRID_H);
-        for (let i = 0; i < window.physGrid.length; i++) {
-            window.physGrid[i] = [];
-        }
-    }
-    let grid = window.physGrid;
+    // --- 2. STARRER PBD-SOLVER ---
+    const SOLVER_ITERATIONS = 10;
 
     for (let iter = 0; iter < SOLVER_ITERATIONS; iter++) {
-        // Grid blitzschnell leeren
-        for (let i = 0; i < grid.length; i++) grid[i].length = 0;
-
-        // Alle Partikel für diese Iteration ins Grid einsortieren
-        for (let i = 0; i < particles.length; i++) {
-            let p = particles[i];
-            p._id = i; 
-            
-            let cx = Math.floor((p.x + OFFSET_X) / CELL_SIZE);
-            let cy = Math.floor((p.y + OFFSET_Y) / CELL_SIZE);
-            
-            p._cx = cx; p._cy = cy; // Für schnelle Abfragen sichern
-            
-            // Nur einsortieren, wenn im gültigen Bereich
-            if (cx >= 0 && cx < GRID_W && cy >= 0 && cy < GRID_H) {
-                grid[cx + cy * GRID_W].push(p);
-            }
-        }
-
         for (let i = 0; i < particles.length; i++) {
             let pi = particles[i];
-            
-            // Spatial Grid: Nur Partikel aus den 9 umliegenden Zellen prüfen!
-            for (let ox = -1; ox <= 1; ox++) {
-                let checkX = pi._cx + ox;
-                if (checkX < 0 || checkX >= GRID_W) continue;
 
-                for (let oy = -1; oy <= 1; oy++) {
-                    let checkY = pi._cy + oy;
-                    if (checkY < 0 || checkY >= GRID_H) continue;
+            for (let j = i + 1; j < particles.length; j++) {
+                let pj = particles[j];
 
-                    let cell = grid[checkX + checkY * GRID_W];
-                    for (let j = 0; j < cell.length; j++) {
-                        let pj = cell[j];
-                        
-                        if (pi._id >= pj._id) continue; // Keine doppelten Checks
+                let dx = pi.x - pj.x;
+                let dy = pi.y - pj.y;
+                let distSq = dx * dx + dy * dy;
+                let allowedDist = (pi.r + pj.r) * 0.95;
 
-                        let dx = pi.x - pj.x;
-                        let dy = pi.y - pj.y;
-                        let distSq = dx * dx + dy * dy;
-                        let allowedDist = (pi.r + pj.r) * 0.95;
+                if (distSq < allowedDist * allowedDist && distSq > 0) {
+                    let dist = Math.sqrt(distSq);
+                    let overlap = allowedDist - dist;
+                    let nx = dx / dist;
+                    let ny = dy / dist;
 
-                        if (distSq < allowedDist * allowedDist && distSq > 0) {
-                            let dist = Math.sqrt(distSq);
-                            let overlap = allowedDist - dist;
-                            let nx = dx / dist;
-                            let ny = dy / dist;
+                    let correction = overlap * 0.6;
+                    let horizFriction = 1.0;
 
-                            let correction = overlap * 0.6;
-                            pi.x += nx * correction;
-                            pi.y += ny * correction;
-                            pj.x -= nx * correction;
-                            pj.y -= ny * correction;
+                    // NEU: Schüttwinkel durch PBD-Dämpfung simulieren!
+                    if (pi.state === 'box' && pj.state === 'box') {
+                        // Innere Reibung blockiert das horizontale Auseinanderrutschen
+                        horizFriction = Math.max(0.1, 1.0 - mu_i * 0.85);
+
+                        // Wenn Band steht, blockiert die Reibung fast komplett (Haufen bleibt extrem stabil)
+                        if (anim_v_belt < 0.01) {
+                            horizFriction = Math.max(0.02, 1.0 - mu_i * 1.5);
                         }
                     }
+
+                    pi.x += nx * correction * horizFriction;
+                    pi.y += ny * correction;
+                    pj.x -= nx * correction * horizFriction;
+                    pj.y -= ny * correction;
                 }
             }
 
-            // Boundary Constraints bleiben unverändert
+            // Boundary Constraints (Gurt & Wände)
             let beltY = U_top_y + Math.tan(alpha) * pi.x;
             let klappeY = U_top_y + Math.tan(alpha) * L_box + h_klappe;
 
-            if (pi.x <= A_top_x) { 
+            if (pi.x <= A_top_x) {
                 if (pi.y < beltY + pi.r) {
                     pi.y = beltY + pi.r;
                 }
-            } else { 
+            } else {
                 let dx = pi.x - cx_A;
                 let dy = pi.y - cy_A;
                 let dist = Math.sqrt(dx * dx + dy * dy);
@@ -540,9 +501,9 @@ function updatePhysics(dt, isWarmup = false) {
                 }
             }
 
-            if (pi.x < pi.r) pi.x = pi.r; 
+            if (pi.x < pi.r) pi.x = pi.r; // Rückwand
 
-            if (pi.x > L_box - pi.r && pi.x < L_box) { 
+            if (pi.x > L_box - pi.r && pi.x < L_box) { // Schieber
                 if (h_klappe <= 0.001 || pi.y > klappeY - pi.r * 0.5) {
                     pi.x = L_box - pi.r;
                 }
@@ -564,50 +525,49 @@ function updatePhysics(dt, isWarmup = false) {
             p.vy *= scale;
         }
 
-        if (p.x <= L_box && p.state === 'box') {
-            p.vx *= 0.85;
-            p.vy *= 0.85;
+        if (p.state === 'box') {
+            // Innere Reibungsdämpfung (Material beruhigt sich relativ zum Band)
+            let relVx = p.vx - targetVx;
+            p.vx -= relVx * (mu_i * 0.1);
 
-            if (Math.abs(p.vx) < 0.01 && Math.abs(p.vy) < 0.01 && anim_v_belt < 0.01) {
-                p.vx = 0; p.vy = 0;
+            if (p.x <= L_box) {
+                p.vx *= 0.85;
+                p.vy *= 0.85;
+            }
+
+            // Absoluter Stopp, wenn Band steht (Brems-Haftreibung greift)
+            if (anim_v_belt < 0.01) {
+                p.vx *= (1.0 - mu_g);
+                if (Math.abs(p.vx) < 0.01) p.vx = 0;
             }
         }
     }
 
-    // --- 4. VISCOUS SHEAR FRICTION (AUCH MIT SPATIAL GRID) ---
+    // --- 4. VISCOUS SHEAR (Scherkraft über mu_i) ---
     for (let i = 0; i < particles.length; i++) {
         let pi = particles[i];
         if (pi.state !== 'box') continue;
 
-        // Wir nutzen das intakte Grid der letzten Iteration für die Reibung
-        for (let ox = -1; ox <= 1; ox++) {
-            let checkX = pi._cx + ox;
-            if (checkX < 0 || checkX >= GRID_W) continue;
+        for (let j = i + 1; j < particles.length; j++) {
+            let pj = particles[j];
+            if (pj.state !== 'box') continue;
 
-            for (let oy = -1; oy <= 1; oy++) {
-                let checkY = pi._cy + oy;
-                if (checkY < 0 || checkY >= GRID_H) continue;
+            let dx = pi.x - pj.x;
+            let dy = pi.y - pj.y;
+            let distSq = dx * dx + dy * dy;
+            let allowedDist = (pi.r + pj.r) * 1.1;
 
-                let cell = grid[checkX + checkY * GRID_W];
-                for (let j = 0; j < cell.length; j++) {
-                    let pj = cell[j];
-                    if (pi._id >= pj._id || pj.state !== 'box') continue;
+            if (distSq < allowedDist * allowedDist) {
+                let meanVx = (pi.vx + pj.vx) * 0.5;
+                let meanVy = (pi.vy + pj.vy) * 0.5;
 
-                    let dx = pi.x - pj.x;
-                    let dy = pi.y - pj.y;
-                    let distSq = dx * dx + dy * dy;
-                    let allowedDist = (pi.r + pj.r) * 1.1;
+                // Innere Reibung (mu_i) bestimmt, wie sehr sich die Schichten blockhaft mitreißen
+                let shearWeight = Math.min(1.0, mu_i * 1.5);
 
-                    if (distSq < allowedDist * allowedDist) {
-                        let meanVx = (pi.vx + pj.vx) * 0.5;
-                        let meanVy = (pi.vy + pj.vy) * 0.5;
-
-                        pi.vx = pi.vx * 0.7 + meanVx * 0.3;
-                        pi.vy = pi.vy * 0.7 + meanVy * 0.3;
-                        pj.vx = pj.vx * 0.7 + meanVx * 0.3;
-                        pj.vy = pj.vy * 0.7 + meanVy * 0.3;
-                    }
-                }
+                pi.vx = pi.vx * (1 - shearWeight) + meanVx * shearWeight;
+                pi.vy = pi.vy * (1 - shearWeight) + meanVy * shearWeight;
+                pj.vx = pj.vx * (1 - shearWeight) + meanVx * shearWeight;
+                pj.vy = pj.vy * (1 - shearWeight) + meanVy * shearWeight;
             }
         }
     }
@@ -677,6 +637,237 @@ function handleCanvasClick(e) {
 }
 
 /*
+ * [BREADCRUMB: 2026-08-11]
+ * DOMÄNE: Canvas Rendering & UI - drawTopView
+ * UPDATE: 
+ * - Draufsicht (Top View) als separates Modul hinzugefügt.
+ * - Bandbreite (B) und lichte Weite (b) werden dynamisch aus UI gelesen.
+ * - Trommeln (+100mm beidseitig) und Welle (+100mm beidseitig, 80mm Durchmesser) implementiert.
+ * - Mittellinien für Wellen und Bandsymmetrie integriert.
+ * - Seitenschürzen öffnen sich ab der Einlauf-Rückenwand um 2° nach außen.
+ */
+/*
+ * [BREADCRUMB: 2026-08-11]
+ * DOMÄNE: Canvas Rendering & UI - drawTopView (Aktualisiert)
+ * UPDATE: 
+ * - Z-Index korrigiert: Gurt (schwarz) liegt nun über den Trommeln/Wellen.
+ * - Positionen getauscht: Draufsicht wird nun im oberen Canvas-Bereich gezeichnet.
+ * - Schieber-Vorderkante in Orange (Breite dynamisch an den 2° Öffnungswinkel angepasst).
+ * - Interaktive Bemaßungen (Hitbox & Highlight) für DU, DA und lichte Weite (b) integriert.
+ * - Fläche für F_Boden (A = L_box * b) als Text-Overlay im Einlaufbereich berechnet und eingeblendet.
+ */
+/*
+ * [BREADCRUMB: 2026-08-11]
+ * DOMÄNE: Canvas Rendering & UI - drawTopView (Fixes)
+ * UPDATE: 
+ * - Y-Offset auf 180px verdoppelt (Abstand zur Oberkante).
+ * - Wellendurchmesser auf 50mm korrigiert (shaftR = 0.025m).
+ * - Gurt umschlingt die Trommeln inklusive Bandstärke an den Außenkanten.
+ * - Einlauf-Rückenwand in Orange (#ff8c00) gezeichnet.
+ */
+/*
+ * [BREADCRUMB: 2026-08-11]
+ * DOMÄNE: Canvas Rendering & UI - drawTopView (Gurtkontur-Fix)
+ * UPDATE: 
+ * - Riesiger B-Radius entfernt! Gurtkontur verläuft nun exakt parallel zur Trommelaußenkante (+ BELT_THICKNESS).
+ * - Trommeldurchmesser-Bemaßungen sauber ausgerichtet.
+ * - Schürzen bleiben innerhalb der Gurtbreite B.
+ */
+function drawTopView(ctx, scale, tx, cy_top, addHitRect) {
+    const B = getVal('in_B', 0.65);
+    const b = getVal('in_b', 0.45);
+    const L = getVal('in_L', 1);
+    const L_box = getVal('in_L_box', 0.55);
+
+    const DU = getVal('in_DU', 0.193);
+    const DA = getVal('in_DA', 0.219);
+    const alpha = getVal('in_alpha', 2) * Math.PI / 180;
+
+    const rU_outer = Math.abs(DU / 2) + BELT_THICKNESS;
+    const rA_outer = Math.abs(DA / 2) + BELT_THICKNESS;
+
+    const beta = Math.asin((rA_outer - rU_outer) / L);
+    const gamma = alpha - beta;
+
+    const cx_U = 0;
+    const cx_A = L * Math.cos(gamma);
+
+    const drumLength = B + 0.200;
+    const shaftLength = drumLength + 0.200;
+    const shaftR = 0.025; // 50mm Welle -> 25mm Radius
+
+    function ty(y_m) { return cy_top + y_m * scale; }
+
+    ctx.save();
+
+    // 1. Welle & Trommel (unter dem Gurt)
+    function drawDrumAxis(cx, D, dimId) {
+        const r = D / 2;
+
+        // Welle (50mm Stärke)
+        ctx.fillStyle = '#95a5a6';
+        ctx.fillRect(tx(cx - shaftR), ty(-shaftLength / 2), shaftR * 2 * scale, shaftLength * scale);
+        ctx.strokeStyle = '#333'; ctx.lineWidth = 1;
+        ctx.strokeRect(tx(cx - shaftR), ty(-shaftLength / 2), shaftR * 2 * scale, shaftLength * scale);
+
+        // Trommel
+        ctx.fillStyle = '#bdc3c7';
+        ctx.fillRect(tx(cx - r), ty(-drumLength / 2), r * 2 * scale, drumLength * scale);
+        ctx.strokeRect(tx(cx - r), ty(-drumLength / 2), r * 2 * scale, drumLength * scale);
+
+        // Mittellinie der Welle
+        ctx.beginPath();
+        ctx.moveTo(tx(cx), ty(-shaftLength / 2 - 0.10));
+        ctx.lineTo(tx(cx), ty(shaftLength / 2 + 0.10));
+        ctx.strokeStyle = '#c0392b';
+        ctx.lineWidth = 0.8;
+        ctx.setLineDash([10, 4, 2, 4]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Bemaßung DU/DA über der Trommel
+        let isHover = (hoveredDim === dimId);
+        let color = isHover ? '#d9534f' : '#0056b3';
+        let dimY = ty(-drumLength / 2 - 0.15);
+
+        ctx.beginPath();
+        ctx.moveTo(tx(cx - r), ty(-drumLength / 2)); ctx.lineTo(tx(cx - r), dimY - 8);
+        ctx.moveTo(tx(cx + r), ty(-drumLength / 2)); ctx.lineTo(tx(cx + r), dimY - 8);
+        ctx.strokeStyle = color; ctx.lineWidth = 0.5; ctx.setLineDash([4, 4]); ctx.stroke();
+        ctx.setLineDash([]);
+
+        ctx.beginPath();
+        ctx.moveTo(tx(cx - r), dimY); ctx.lineTo(tx(cx + r), dimY);
+        ctx.strokeStyle = isHover ? '#d9534f' : '#333'; ctx.lineWidth = isHover ? 1.2 : 0.6; ctx.stroke();
+
+        if (typeof drawDimTick === 'function') {
+            drawDimTick(ctx, tx(cx - r), dimY, isHover);
+            drawDimTick(ctx, tx(cx + r), dimY, isHover);
+        }
+
+        ctx.fillStyle = color;
+        ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+        ctx.font = '12px Consolas, "Courier New", monospace';
+        ctx.fillText(`Ø${D.toFixed(3)}`, tx(cx), dimY - 4);
+
+        addHitRect(dimId, tx(cx - r) - 10, dimY - 20, (r * 2 * scale) + 20, 30);
+    }
+
+    drawDrumAxis(cx_U, DU, 'DU');
+    drawDrumAxis(cx_A, DA, 'DA');
+
+    // 2. Gurt (KORREKTUR: Parallele Außenkanten exakt an der Trommelaußenkante + Gurtstärke)
+    const beltLeftX = cx_U - rU_outer;  // Umlenktrommel-Außenkante + t_G
+    const beltRightX = cx_A + rA_outer; // Antriebstrommel-Außenkante + t_G
+
+    ctx.fillStyle = '#222222';
+    ctx.fillRect(tx(beltLeftX), ty(-B / 2), (beltRightX - beltLeftX) * scale, B * scale);
+
+    ctx.strokeStyle = '#111111';
+    ctx.lineWidth = 1.2;
+    ctx.strokeRect(tx(beltLeftX), ty(-B / 2), (beltRightX - beltLeftX) * scale, B * scale);
+
+    // 3. Seitenschürzen (2° Öffnungswinkel, begrenzt auf die Gurtlänge)
+    const skirtTan = Math.tan(1 * Math.PI / 180);
+    const w_start = b / 2;
+    const w_end = Math.min(B / 2 - 0.01, b / 2 + (cx_A - cx_U) * skirtTan); // Verhindert Überstehen über Gurt
+
+    ctx.beginPath();
+    // Obere Schürze
+    ctx.moveTo(tx(cx_U), ty(-w_start));
+    ctx.lineTo(tx(cx_A), ty(-w_end));
+    // Untere Schürze
+    ctx.moveTo(tx(cx_U), ty(w_start));
+    ctx.lineTo(tx(cx_A), ty(w_end));
+
+    ctx.strokeStyle = '#d9534f';
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+
+    // 4. Hinterwand des Einlaufkastens (Orange)
+    ctx.beginPath();
+    ctx.moveTo(tx(cx_U), ty(-w_start));
+    ctx.lineTo(tx(cx_U), ty(w_start));
+    ctx.strokeStyle = '#ff8c00';
+    ctx.lineWidth = 3.5;
+    ctx.stroke();
+
+    // 5. Schieber-Vorderkante (Orange)
+    const schieberX = tx(cx_U + L_box);
+    const w_schieber = b / 2 + L_box * skirtTan;
+
+    ctx.beginPath();
+    ctx.moveTo(schieberX, ty(-w_schieber));
+    ctx.lineTo(schieberX, ty(w_schieber));
+    ctx.strokeStyle = '#ff8c00';
+    ctx.lineWidth = 3.5;
+    ctx.stroke();
+
+    // 6. Bemaßung: Lichte Weite (b) an der Rückwand
+    let isHoverB = (hoveredDim === 'b');
+    let colorB = isHoverB ? '#d9534f' : '#888';
+    let dimX_b = tx(beltLeftX - 0.12);
+
+    ctx.beginPath();
+    ctx.moveTo(tx(cx_U), ty(-w_start)); ctx.lineTo(dimX_b - 10, ty(-w_start));
+    ctx.moveTo(tx(cx_U), ty(w_start)); ctx.lineTo(dimX_b - 10, ty(w_start));
+    ctx.strokeStyle = colorB; ctx.lineWidth = 0.5; ctx.setLineDash([4, 4]); ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.beginPath();
+    ctx.moveTo(dimX_b, ty(-w_start)); ctx.lineTo(dimX_b, ty(w_start));
+    ctx.strokeStyle = isHoverB ? '#d9534f' : '#333'; ctx.lineWidth = isHoverB ? 1.2 : 0.6; ctx.stroke();
+
+    if (typeof drawDimTick === 'function') {
+        drawDimTick(ctx, dimX_b, ty(-w_start), isHoverB);
+        drawDimTick(ctx, dimX_b, ty(w_start), isHoverB);
+    }
+
+    ctx.save();
+    ctx.translate(dimX_b - 8, ty(0));
+    ctx.rotate(-Math.PI / 2);
+    ctx.fillStyle = isHoverB ? '#d9534f' : '#111';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+    ctx.font = '12px Consolas, "Courier New", monospace';
+    ctx.fillText(`b = ${b.toFixed(2)}`, 0, 0);
+    ctx.restore();
+
+    addHitRect('b', dimX_b - 20, ty(-w_start) - 10, 40, (w_start * 2 * scale) + 20);
+
+    // 7. F_Boden Flächentitel im Einlaufkasten
+    const area = L_box * b;
+    const textX = tx(cx_U + L_box / 2);
+    const textY = ty(0);
+
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.88)';
+    const textWidth = 85;
+    const textHeight = 35;
+    ctx.fillRect(textX - textWidth / 2, textY - textHeight / 2, textWidth, textHeight);
+    ctx.strokeStyle = '#999';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(textX - textWidth / 2, textY - textHeight / 2, textWidth, textHeight);
+
+    ctx.fillStyle = '#111';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.font = 'bold 11px sans-serif';
+    ctx.fillText(`F_Boden`, textX, textY - 6);
+    ctx.font = '11px monospace';
+    ctx.fillText(`A = ${area.toFixed(2)} m²`, textX, textY + 8);
+
+    // 8. Symmetrie-Mittellinie für das gesamte Band
+    ctx.beginPath();
+    ctx.moveTo(tx(beltLeftX - 0.2), ty(0));
+    ctx.lineTo(tx(beltRightX + 0.2), ty(0));
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 0.7;
+    ctx.setLineDash([18, 6, 4, 6]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.restore();
+}
+
+/*
  * [BREADCRUMB: 2026-08-09]
  * DOMÄNE: Canvas Rendering & UI - drawConveyorCanvas
  * UPDATE: 
@@ -721,7 +912,10 @@ function drawConveyorCanvas() {
     const beta = Math.asin((rA_outer - rU_outer) / L);
     const gamma = alpha - beta;
 
-    const padX = 140; const padY = 70; const reservedRightSpace = 320;
+    // HIER: Y-Pad verringern, um Seitenansicht tiefer zu schieben (erhöht den Abstand)
+    const padX = 140;
+    const padY = 40;  // Auf 40 verringert -> Seitenansicht rückt tiefer nach unten
+    const reservedRightSpace = 320;
     const scaleX = (W - padX - reservedRightSpace) / L;
     const fixedSpanY = Math.max(2.5, L * Math.abs(Math.sin(gamma)) + 1.5);
     const scaleY = (H_canvas - 100) / fixedSpanY;
@@ -908,8 +1102,9 @@ function drawConveyorCanvas() {
     ctx.fillText(`L_Box = ${L_box.toFixed(2).replace('.', ',')} m`, (lx1 + lx2) / 2, dimY_Lbox - 4);
     addHitRect('L_box', lx1, dimY_Lbox - 30, lx2 - lx1, 40);
 
+    // ÄNDERUNG 1: Bemaßung H aus dem Abwurfbereich nach rechts schieben
     let colorH = hoveredDim === 'H' ? '#d9534f' : dimColor;
-    const dimX_H = Math.max(tx(cx_A) + 80, ax_top + 80);
+    const dimX_H = Math.max(tx(cx_A) + 120, ax_top + 130); // Mehr Abstand nach rechts!
     const dimX_Alpha = dimX_H + 90;
 
     ctx.beginPath();
@@ -996,6 +1191,11 @@ function drawConveyorCanvas() {
     ctx.restore();
 
     addHitRect('L', midX - 80, midY - 40, 160, 80);
+
+    // AM ENDE VON drawConveyorCanvas():
+    // Abstand der Draufsicht zur Oberkante von 90px auf 180px verdoppelt
+    const cy_TopView = 130;
+    drawTopView(ctx, scale, tx, cy_TopView, addHitRect);
 }
 
 function bootPhysics() {

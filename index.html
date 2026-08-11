@@ -4,9 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Abzugsband Auslegung (inkl. VDI 2322)</title>
-
-    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
     <link rel="stylesheet" href="style.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 </head>
 <body>
 
@@ -18,6 +18,25 @@
             <button class="tab-btn" onclick="switchTab('ergebnisse')">Ergebnisse & Berechnungen</button>
         </div>
 
+        <!-- Header & Datei-Operationen -->
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; border-bottom: 2px solid var(--border-color); padding-bottom: 15px;">
+            <div style="display: flex; flex-direction: column;">
+                <h2 style="margin: 0; color: #2c3e50;">
+                    Auslegung DAB
+                    <span style="cursor:pointer; font-size: 0.8em;" onclick="openMetaModal()" title="Projektdaten bearbeiten">📝</span>
+                </h2>
+                <div style="font-size: 0.85em; color: #666; margin-top: 5px;">
+                    Projekt: <strong id="disp-projekt">---</strong> &nbsp;|&nbsp; Ersteller: <strong id="disp-ersteller">---</strong>
+                </div>
+            </div>
+            <div style="display: flex; gap: 8px;">
+                <button class="calc-btn" style="margin: 0; width: auto; background: #34495e;" onclick="document.getElementById('dabFileInput').click()">📂 Laden (.dab)</button>
+                <button class="calc-btn" style="margin: 0; width: auto; background: #34495e;" onclick="saveDAB()">💾 Speichern (.dab)</button>
+                <button class="calc-btn" id="btnExportPDF" style="margin: 0; width: auto; background: #e67e22;" onclick="generatePDF()">📄 PDF Bericht</button>
+                <input type="file" id="dabFileInput" accept=".dab" style="display: none;" onchange="loadDAB(event)">
+            </div>
+        </div>
+
         <div id="eingaben" class="tab-content active">
 
             <div class="chapter-card">
@@ -26,11 +45,16 @@
                     <button class="info-btn" style="float: right; width: auto; padding: 2px 10px; border-radius: 4px;" onclick="openAbzugModal()">Theorie Abzugskraft ℹ️</button>
                 </h3>
                 <div class="canvas-wrapper">
-                    <canvas id="conveyorCanvas" width="900" height="380"></canvas>
-                    <button class="anim-btn" id="btnAnimToggle" onclick="toggleAnimation()">⏸ Pause Animation</button>
+                    <!-- Height auf 520 erhöht, um oben Platz für den doppelten Abstand zu schaffen -->
+                    <canvas id="conveyorCanvas" width="900" height="520"></canvas>
+
+                    <!-- Nur noch Symbol, umplatziert -->
+                    <button class="anim-btn" id="btnAnimToggle" onclick="toggleAnimation()" title="Animation starten/pausieren">❚❚</button>
+
                     <div class="canvas-slider-container">
                         <label>v = <span id="canvas_v_val">0.38</span> m/s</label>
-                        <input type="range" id="canvas_v_slider" min="0.1" max="2.0" step="0.01" value="0.38" oninput="syncSpeed(this.value)">
+                        <!-- Im Canvas-Bereich (Slider): -->
+                        <input type="range" id="canvas_v_slider" min="0" max="2.0" step="0.01" value="0.38" oninput="syncSpeed(this.value)">
                     </div>
                 </div>
 
@@ -101,7 +125,8 @@
                     <div style="flex: 1;">
                         <div class="input-group">
                             <label>Fördergeschwindigkeit (\(v\))</label>
-                            <input type="number" id="in_v" value="0.38" step="0.01" min="0.1" max="2.0" oninput="syncSpeed(this.value)">
+                            <!-- Im Bereich 2. Material & Durchsatz (Input-Feld): -->
+                            <input type="number" id="in_v" value="0.38" step="0.01" min="0" max="2.0" oninput="syncSpeed(this.value)">
                             <span class="unit">m/s</span>
                         </div>
                         <div class="input-group">
@@ -255,10 +280,30 @@
         </div>
     </div>
 
+
+
+    <!-- Meta Data Modal -->
+    <div id="metaModal" class="modal-overlay" style="display:none;">
+        <div class="modal-content" style="max-width: 450px;">
+            <span class="modal-close" onclick="closeMetaModal()">&times;</span>
+            <h2 style="color: #2c3e50;">📝 Projektdaten</h2>
+            <div class="input-group" style="flex-direction: column; align-items: flex-start;">
+                <label style="margin-bottom: 5px; width: 100%;">Projektname / Objekt-Nr.</label>
+                <input type="text" id="input-projekt" style="width: 100%; max-width: 100%; text-transform: uppercase;" placeholder="z.B. KVA-CHNIE-TSLOG">
+            </div>
+            <div class="input-group" style="flex-direction: column; align-items: flex-start; margin-top: 15px;">
+                <label style="margin-bottom: 5px; width: 100%;">Ersteller (Kürzel)</label>
+                <input type="text" id="input-ersteller" style="width: 100%; max-width: 100%; text-transform: uppercase;" maxlength="3" placeholder="z.B. STA" oninput="this.value = this.value.toUpperCase().replace(/[^A-ZÄÖÜ]/g, '')">
+            </div>
+            <button class="calc-btn" style="background: #009B4C; margin-top: 25px;" onclick="saveMetaModal()">Speichern</button>
+        </div>
+    </div>
+
+    <!-- WICHTIG: Die 4 JS Dateien laden (html2pdf ist für den Report) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <script src="config_manager.js"></script>
+    <script src="pdf_export.js"></script>
     <script src="ui_math_logic.js"></script>
     <script src="canvas_physics.js"></script>
-
-
-
 </body>
 </html>

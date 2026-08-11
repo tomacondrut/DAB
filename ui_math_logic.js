@@ -96,6 +96,10 @@ function updateLiveConversion() {
  * - L_box sauber zwischen 0.30m und 1.00m eingegrenzt.
  * - resetBoxParticles() löscht nur überstehende Partikel sanft aus dem Speicher.
  */
+/*
+ * DOMÄNE: UI & Mathematik - enforceConstraints
+ * UPDATE: Bandlänge (L) auf max 5.0m und min (L_box + 0.3m) limitiert.
+ */
 function enforceConstraints() {
     let alpha = document.getElementById('in_alpha');
     let h_klappe = document.getElementById('in_h_klappe');
@@ -105,15 +109,30 @@ function enforceConstraints() {
     let el_DA = document.getElementById('in_DA');
     let el_DU = document.getElementById('in_DU');
     let el_L_box = document.getElementById('in_L_box');
+    let el_L = document.getElementById('in_L');
 
     if (!alpha || !h_klappe || !h_klappe_max || !el_B || !el_b) return;
 
-    // L_box Schranken (ohne harten Physik-Stopp während des Tippens)
+    // L_box Schranken
     if (el_L_box && el_L_box.value !== "") {
         let lbox_val = parseFloat(el_L_box.value);
         if (!isNaN(lbox_val)) {
             if (lbox_val < 0.30) el_L_box.value = "0.30";
             if (lbox_val > 1.00) el_L_box.value = "1.00";
+        }
+    }
+
+    // NEU: Achsabstand / Bandlänge (L) Schranken
+    if (el_L && el_L_box) {
+        let l_val = parseFloat(el_L.value);
+        let lbox_val = parseFloat(el_L_box.value);
+        if (!isNaN(l_val) && !isNaN(lbox_val)) {
+            let min_L = lbox_val + 0.300; // Darf nie kürzer als Einlaufkasten + 300mm sein
+            if (l_val < min_L) {
+                el_L.value = min_L.toFixed(3);
+            } else if (l_val > 5.000) {
+                el_L.value = "5.000"; // Max 5 Meter
+            }
         }
     }
 
@@ -296,6 +315,8 @@ function calculate() {
     const PM = PW / eta;
     const PM_kW = PM / 1000;
 
+    // ... [Bestehender Code der calculate() Funktion bis zu den innerText Setzungen] ...
+
     document.getElementById('out_mL').innerText = mL.toFixed(2) + " kg/m";
     document.getElementById('out_FAbz').innerText = F_Abzug.toFixed(2) + " N";
     document.getElementById('out_FSt').innerText = FSt.toFixed(2) + " N";
@@ -306,26 +327,34 @@ function calculate() {
 
     document.getElementById('info_mL').innerHTML = latex_mL;
 
-    document.getElementById('info_FAbz').innerHTML = String.raw`
-    <p><strong>Ermittlung der Abzugskraft:</strong></p>
+    const html_FAbz = String.raw`
+    <p style="margin:0 0 5px 0; text-align:left;"><strong>Ermittlung der Abzugskraft:</strong></p>
     $$ F_{Boden} = \rho \cdot g \cdot h_{Silo} \cdot L_{box} \cdot b = ${F_Boden.toFixed(2)} \text{ N} $$
     $$ F_{Abzug} = F_{Boden} \cdot \mu_G + (\rho \cdot g \cdot h_{Silo} \cdot b \cdot h_{Klappe} \cdot \mu_i) = ${F_Abzug.toFixed(2)} \text{ N} $$
     `;
-    document.getElementById('info_FSt').innerHTML = String.raw`
-    $$ F_{St} = H \cdot g \cdot m_L' = ${FSt.toFixed(2)} \text{ N} $$
-    `;
-    document.getElementById('info_FH').innerHTML = String.raw`
-    $$ F_H = L \cdot f \cdot g \cdot (m_L' + m_{leer}') = ${FH.toFixed(2)} \text{ N} $$
-    `;
-    document.getElementById('info_FW').innerHTML = String.raw`
-    $$ F_W = C \cdot F_H + F_{St} + F_{Abzug} = ${FW.toFixed(2)} \text{ N} $$
-    `;
-    document.getElementById('info_PW').innerHTML = String.raw`
-    $$ P_W = F_W \cdot v = ${PW.toFixed(2)} \text{ W} $$
-    `;
-    document.getElementById('info_PM').innerHTML = String.raw`
-    $$ P_{M,erf} = \frac{P_W}{\eta_{ges}} = ${PM_kW.toFixed(3)} \text{ kW} $$
-    `;
+    const html_FSt = String.raw`$$ F_{St} = H \cdot g \cdot m_L' = ${FSt.toFixed(2)} \text{ N} $$`;
+    const html_FH = String.raw`$$ F_H = L \cdot f \cdot g \cdot (m_L' + m_{leer}') = ${FH.toFixed(2)} \text{ N} $$`;
+    const html_FW = String.raw`$$ F_W = C \cdot F_H + F_{St} + F_{Abzug} = ${FW.toFixed(2)} \text{ N} $$`;
+    const html_PW = String.raw`$$ P_W = F_W \cdot v = ${PW.toFixed(2)} \text{ W} $$`;
+    const html_PM = String.raw`$$ P_{M,erf} = \frac{P_W}{\eta_{ges}} = ${PM_kW.toFixed(3)} \text{ kW} $$`;
+
+    document.getElementById('info_FAbz').innerHTML = html_FAbz;
+    document.getElementById('info_FSt').innerHTML = html_FSt;
+    document.getElementById('info_FH').innerHTML = html_FH;
+    document.getElementById('info_FW').innerHTML = html_FW;
+    document.getElementById('info_PW').innerHTML = html_PW;
+    document.getElementById('info_PM').innerHTML = html_PM;
+
+    // NEU: Saubere Roh-Formeln für den PDF-Export im Speicher ablegen
+    window.lastCalculatedMath = {
+        info_mL: latex_mL,
+        info_FAbz: html_FAbz,
+        info_FSt: html_FSt,
+        info_FH: html_FH,
+        info_FW: html_FW,
+        info_PW: html_PW,
+        info_PM: html_PM
+    };
 
     if (window.MathJax) {
         MathJax.typesetPromise().catch((err) => console.log('MathJax Fehler: ', err));

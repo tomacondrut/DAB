@@ -175,10 +175,11 @@ body {
     width: 100%;
 }
 
+/* Aspect-Ratio an die neue Canvas-Höhe anpassen */
 #conveyorCanvas {
     width: 100%;
     height: auto;
-    aspect-ratio: 900 / 380;
+    aspect-ratio: 900 / 520;
     object-fit: contain;
     background: #ffffff;
     border: 1px solid var(--border-color);
@@ -187,18 +188,25 @@ body {
     cursor: crosshair;
 }
 
+/* Button in der rechten oberen Ecke platzieren, rein für Icons gestylt */
 .anim-btn {
     position: absolute;
     top: 10px;
-    left: 10px;
+    right: 10px; /* HIER: Nach rechts oben verschoben */
+    left: auto;
     background: var(--primary-color);
     color: white;
     border: none;
-    padding: 6px 12px;
+    width: 36px;
+    height: 36px;
     border-radius: 4px;
     cursor: pointer;
-    font-weight: bold;
+    font-size: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    z-index: 10;
 }
 
     .anim-btn:hover {
