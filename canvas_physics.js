@@ -147,27 +147,37 @@ function initParticles() {
  *   Die Physik wird in festen Scheiben von 1/60s (FIXED_DT) berechnet.
  *   Verhindert Abstürze/Explosionen auf Handys (30/120Hz) und schwächeren Rechnern.
  */
+/*
+ * [BREADCRUMB: 2026-08-11]
+ * DOMÄNE: Canvas Animation & Rendering - Fixed Timestep Accumulator (100 Hz)
+ * UPDATE: 
+ * - FIXED_DT auf 1/100 (100 Hz) gesetzt für maximale Stabilität.
+ * - Akkumulator garantiert identisches Verhalten auf 60Hz, 120Hz und 244Hz Displays.
+ */
 let physicsAccumulator = 0;
-const FIXED_DT = 1 / 60; // Fester Physik-Schritt (60 Hz)
+const FIXED_DT = 1 / 100; // Fester Physik-Schritt (100 Hz)
 
 function renderLoop(timestamp) {
     if (!isAnimating) return;
     if (!lastTime) lastTime = timestamp;
     
-    // Echtes Delta in Sekunden berechnen
     let frameTime = (timestamp - lastTime) / 1000;
     lastTime = timestamp;
 
-    // Schutz gegen "Spiral of Death" (z. B. wenn der Tab im Hintergrund war)
+    // Schutz vor Rucklern (max. 0.25s nachholen)
     if (frameTime > 0.25) frameTime = 0.25;
 
     physicsAccumulator += frameTime;
 
-    // Führe Physik-Schritte nur in festen 60Hz-Häppchen aus
+    // Arbeitet die Physik in exakten 100Hz-Paketen ab
     while (physicsAccumulator >= FIXED_DT) {
         updatePhysics(FIXED_DT, false);
         physicsAccumulator -= FIXED_DT;
     }
+
+    drawConveyorCanvas();
+    animId = requestAnimationFrame(renderLoop);
+}
 
     // Zeichnen erfolgt weiterhin mit der vollen Bildwiederholrate des Geräts
     drawConveyorCanvas();
@@ -407,8 +417,9 @@ function updatePhysics(dt, isWarmup = false) {
 
             let beltY = U_top_y + Math.tan(alpha) * p.x;
             if (p.y <= beltY + p.r + 0.05) {
-                p.vx += (targetVx - p.vx) * 0.8;
-                p.vy += (targetVy - p.vy) * 0.8;
+// NEU (bei 100 Hz – etwas sanfter pro Schritt, da öfter aufgerufen):
+p.vx += (targetVx - p.vx) * 0.5;
+p.vy += (targetVy - p.vy) * 0.5;
             }
 
             p.x += p.vx * dt;
@@ -537,8 +548,9 @@ function updatePhysics(dt, isWarmup = false) {
                 let meanVx = (pi.vx + pj.vx) * 0.5;
                 let meanVy = (pi.vy + pj.vy) * 0.5;
 
-                pi.vx = pi.vx * 0.5 + meanVx * 0.5;
-                pi.vy = pi.vy * 0.5 + meanVy * 0.5;
+// NEU (bei 100 Hz):
+pi.vx = pi.vx * 0.7 + meanVx * 0.3;
+pi.vy = pi.vy * 0.7 + meanVy * 0.3;
                 pj.vx = pj.vx * 0.5 + meanVx * 0.5;
                 pj.vy = pj.vy * 0.5 + meanVy * 0.5;
             }
