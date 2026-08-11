@@ -179,11 +179,6 @@ function renderLoop(timestamp) {
     animId = requestAnimationFrame(renderLoop);
 }
 
-    // Zeichnen erfolgt weiterhin mit der vollen Bildwiederholrate des Geräts
-    drawConveyorCanvas();
-    animId = requestAnimationFrame(renderLoop);
-}
-
 /*
  * [BREADCRUMB: 2026-08-09]
  * DOMÄNE: Canvas Physik-Engine & Animation - updatePhysics (Ausschnitt)
