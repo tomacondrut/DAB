@@ -139,14 +139,37 @@ function initParticles() {
     for (let k = 0; k < 60; k++) updatePhysics(0.016, true);
 }
 
+/*
+ * [BREADCRUMB: 2026-08-11]
+ * DOMÄNE: Canvas Animation & Rendering - Fixed Timestep Accumulator
+ * UPDATE: 
+ * - Entkopplung von Physik und Bildwiederholrate (FPS-Unabhängigkeit):
+ *   Die Physik wird in festen Scheiben von 1/60s (FIXED_DT) berechnet.
+ *   Verhindert Abstürze/Explosionen auf Handys (30/120Hz) und schwächeren Rechnern.
+ */
+let physicsAccumulator = 0;
+const FIXED_DT = 1 / 60; // Fester Physik-Schritt (60 Hz)
+
 function renderLoop(timestamp) {
     if (!isAnimating) return;
     if (!lastTime) lastTime = timestamp;
-    let dt = (timestamp - lastTime) / 1000;
-    if (dt > 0.1) dt = 0.1; 
+    
+    // Echtes Delta in Sekunden berechnen
+    let frameTime = (timestamp - lastTime) / 1000;
     lastTime = timestamp;
 
-    updatePhysics(dt, false);
+    // Schutz gegen "Spiral of Death" (z. B. wenn der Tab im Hintergrund war)
+    if (frameTime > 0.25) frameTime = 0.25;
+
+    physicsAccumulator += frameTime;
+
+    // Führe Physik-Schritte nur in festen 60Hz-Häppchen aus
+    while (physicsAccumulator >= FIXED_DT) {
+        updatePhysics(FIXED_DT, false);
+        physicsAccumulator -= FIXED_DT;
+    }
+
+    // Zeichnen erfolgt weiterhin mit der vollen Bildwiederholrate des Geräts
     drawConveyorCanvas();
     animId = requestAnimationFrame(renderLoop);
 }
