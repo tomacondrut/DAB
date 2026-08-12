@@ -310,28 +310,58 @@ function closeModal(modalId) {
     }
 }
 
+/*
+ * [BREADCRUMB: 2026-08-12]
+ * DOMÄNE: UI & Mathematik - calculate
+ * UPDATE:
+ * - getSafeVal für sicheren Parametereinzug integriert (Zero-Protection & Min-Limit 0.30 für mu_i).
+ * - Doppelte Deklarationen und undefinierte raw_*-Variablen bereinigt.
+ */
 function calculate() {
     enforceConstraints();
     const rho = parseFloat(document.getElementById('in_rho').value) || 0;
     const v = parseFloat(document.getElementById('in_v').value) || 0;
     const L = parseFloat(document.getElementById('in_L').value) || 0;
-    const b = parseFloat(document.getElementById('in_b').value) || 0; 
+    const b = parseFloat(document.getElementById('in_b').value) || 0;
     const h_klappe = parseFloat(document.getElementById('in_h_klappe').value) || 0;
-    
-    const H = currentH; 
+
+    const H = currentH;
     const m_leer = parseFloat(document.getElementById('in_m_leer').value) || 0;
     const eta = parseFloat(document.getElementById('in_eta').value) || 1;
     const C = parseFloat(document.getElementById('in_C').value) || 4.0;
-    
+
     const h_silo = parseFloat(document.getElementById('in_h_silo').value) || 0;
     const L_box = parseFloat(document.getElementById('in_L_box').value) || 0;
-    const mu_g = parseFloat(document.getElementById('in_mu_g').value) || 0.6;
-    const mu_i = parseFloat(document.getElementById('in_mu_i').value) || 0.5;
+
+    // --- Sicherer Parametereinzug VOR der Berechnung ---
+    /*
+     * [BREADCRUMB: 2026-08-12]
+     * DOMÄNE: Parameter Guardrails - Friction Coefficients Safe Extractor
+     * UPDATE: 
+     * - mu_g und mu_i einheitlich auf das Praxis-Intervall [0.30, 1.20] bzw. [0.30, 1.00] eingegrenzt.
+     */
+    const getSafeFriction = () => {
+        const parseClamp = (id, fallback, minVal, maxVal) => {
+            const el = document.getElementById(id);
+            if (!el) return fallback;
+            let val = parseFloat(el.value);
+            if (isNaN(val) || val < minVal) return minVal;
+            if (val > maxVal) return maxVal;
+            return val;
+        };
+
+        return {
+            mu_g: parseClamp('in_mu_g', 0.60, 0.30, 1.20),
+            mu_i: parseClamp('in_mu_i', 0.50, 0.30, 1.00)
+        };
+    };
+
+    const { mu_g, mu_i } = getSafeFriction();
 
     const modeEl = document.querySelector('input[name="flow_mode"]:checked');
-    if(!modeEl) return;
+    if (!modeEl) return;
     const mode = modeEl.value;
-    
+
     let ImN_kg_s = 0;
     let latex_mL = "";
 
@@ -370,7 +400,7 @@ function calculate() {
     const F_Boden = rho * g * h_silo * L_box * b;
     const F_Abzug = (F_Boden * mu_g) + (rho * g * h_silo * b * h_klappe * mu_i);
 
-    const FW = C * FH + FSt + F_Abzug; 
+    const FW = C * FH + FSt + F_Abzug;
     const PW = FW * v;
     const PM = PW / eta;
     const PM_kW = PM / 1000;
