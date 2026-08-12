@@ -6,6 +6,7 @@
  */
 
 // NEU: Synchronisation von Input-Feld und Canvas-Slider
+// BREADCRUMB: [EDIT] MAX_V von 2.0 m/s auf 0.8 m/s beschränkt
 function syncSpeed(val, source = 'manual') {
     let elIn = document.getElementById('in_v');
     let elSl = document.getElementById('canvas_v_slider');
@@ -13,7 +14,7 @@ function syncSpeed(val, source = 'manual') {
 
     let numVal = parseFloat(val);
     if (isNaN(numVal)) numVal = 0;
-    if (numVal > 2.0) numVal = 2.0; // Hard-Cap: Maximale Bandgeschwindigkeit
+    if (numVal > 0.8) numVal = 0.8; // Hard-Cap: Maximale Bandgeschwindigkeit
     if (numVal < 0) numVal = 0;
 
     let strVal = numVal.toFixed(2);

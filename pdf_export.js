@@ -107,7 +107,8 @@ async function generatePDF() {
             const w = cvs.width - padL - padR;
             const h = cvs.height - padT - padB;
 
-            const maxV = 2.0;
+            // BREADCRUMB: [EDIT] Diagramm-Skalierung im PDF-Export auf maxV = 0.8 m/s angepasst
+            const maxV = 0.8;
             const maxPower = Math.max(0.1, calcPower(maxV, p.h_k, p) * 1.15);
 
             const steps = [0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50];
