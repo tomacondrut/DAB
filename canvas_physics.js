@@ -13,6 +13,10 @@ let beltOffset = 0;
 let particles = [];
 let isAnimating = true;
 
+// NEU: Feste Physik-Zeitschritte für absolut konstantes Materialverhalten
+const PHYSICS_STEP = 0.01; // 100 Hz (100 Updates pro Sekunde)
+let accumulator = 0;
+
 const BELT_THICKNESS = 0.010; 
 // Erhöhter optischer Radius (20mm bzw 40mm Durchmesser)
 const currentSimRadius = 0.020; 
@@ -72,6 +76,7 @@ function toggleAnimation() {
     if (isAnimating) {
         btn.innerText = "❚❚";
         lastTime = performance.now();
+        accumulator = 0; // NEU: Akkumulator beim Fortsetzen resetten
         animId = requestAnimationFrame(renderLoop);
     } else {
         btn.innerText = "▶";
@@ -120,10 +125,8 @@ function initParticles() {
     const rU_outer = Math.abs(DU / 2) + BELT_THICKNESS;
     const U_top_y = rU_outer * Math.cos(alpha);
 
-    // REDUZIERT: Nur noch minimaler unsichtbarer Puffer über der Box
     const physicsBoxHeight = h_klappe_max + 0.15;
 
-    // Raster-Spawnen: Breiter fächern, da Überlappung erwünscht
     const colWidth = currentSimRadius * 1.5;
     const numCols = Math.floor((L_box - 0.04) / colWidth);
 
@@ -141,17 +144,31 @@ function initParticles() {
         }
     }
 
-    for (let k = 0; k < 60; k++) updatePhysics(0.016, true);
+    // Warmup ebenfalls mit dem konstanten Physik-Schritt
+    for (let k = 0; k < 60; k++) updatePhysics(PHYSICS_STEP, true);
 }
 
 function renderLoop(timestamp) {
     if (!isAnimating) return;
     if (!lastTime) lastTime = timestamp;
-    let dt = (timestamp - lastTime) / 1000;
-    if (dt > 0.1) dt = 0.1; 
+    
+    // Wie viel Zeit ist seit dem letzten gezeichneten Bild vergangen?
+    let frameTime = (timestamp - lastTime) / 1000;
+    
+    // "Spiral of Death" verhindern (wenn der Tab im Hintergrund war)
+    if (frameTime > 0.1) frameTime = 0.1; 
+    
     lastTime = timestamp;
+    accumulator += frameTime;
 
-    updatePhysics(dt, false);
+    // NEU: Die Physik so oft aufrufen, bis sie die reale Zeit eingeholt hat.
+    // Ein 144Hz Monitor ruft dies ca. alle 0.0069s auf -> Physik pausiert teils für einen Frame.
+    // Ein 60Hz Monitor ruft dies ca. alle 0.016s auf -> Physik rechnet manchmal 2x pro Frame.
+    while (accumulator >= PHYSICS_STEP) {
+        updatePhysics(PHYSICS_STEP, false);
+        accumulator -= PHYSICS_STEP;
+    }
+
     drawConveyorCanvas();
     animId = requestAnimationFrame(renderLoop);
 }
