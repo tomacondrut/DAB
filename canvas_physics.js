@@ -451,15 +451,25 @@ function updatePhysics(dt, isWarmup = false) {
      * - Nachgespawnte Partikel lagern sich bei v = 0 druckfrei ab, ohne Material aus dem Kasten zu pressen.
      * - Bei laufendem Band greift der Auflastdruck wieder voll proportional zur Silohöhe.
      */
+    // --- 1. INTEGRATION (Vorhersage der Bewegung) ---
+    /*
+     * [BREADCRUMB: 2026-08-12]
+     * DOMÄNE: Canvas Physik-Engine - updatePhysics (Janssen-Effekt Limitierung)
+     * UPDATE: 
+     * - Silo-Auflastdruck (a_silo) nach oben hin auf max. 4 Meter effektive Säule limitiert.
+     * - Verhindert Engine-Explosionen bei extremen Silohöhen (z.B. 20m) und bildet den Sättigungseffekt 
+     *   der Silo-Wandreibung (Janssen-Gleichung) für die Optik realistisch ab.
+     */
     const targetVx = anim_v_belt * Math.cos(alpha);
     const targetVy = anim_v_belt * Math.sin(alpha);
 
-    // Silo-Höhe für den Auflastdruck abrufen
+    // Silo-Höhe abrufen und für die Optik nach Janssen-Sättigung kappen (max 4.0 m Auswirkung)
     const h_silo_val = getVal('in_h_silo', 3.0);
+    const effective_h_silo = Math.min(h_silo_val, 4.0);
 
-    // NEU: Auflastdruck ist NUR aktiv, wenn das Band sich auch bewegt!
+    // Auflastdruck ist nur aktiv, wenn das Band sich bewegt
     const isMoving = anim_v_belt > 0.0001;
-    const a_silo = isMoving ? (h_silo_val * 5.0) : 0;
+    const a_silo = isMoving ? (effective_h_silo * 5.0) : 0;
 
     for (let p of particles) {
         p.prevX = p.x;
@@ -475,7 +485,7 @@ function updatePhysics(dt, isWarmup = false) {
 
             p.vy -= current_g * dt;
 
-            // Terminal Velocity: Bei Stillstand sanft (-5.0), bei Fahrt druckskaliert
+            // Terminal Velocity Limit (gekappt auf stabile Solver-Werte)
             let fallLimit = -5.0 - (a_silo * 0.1);
             if (p.vy < fallLimit) p.vy = fallLimit;
 
@@ -483,13 +493,11 @@ function updatePhysics(dt, isWarmup = false) {
             let isTouchingBelt = (p.y <= beltY + p.r + 0.05);
 
             if (isTouchingBelt) {
-                // Gurt-Reibung: Zwingt Partikel an die Band-Geschwindigkeit
                 let beltFriction = Math.min(1.0, mu_g * 1.2);
                 p.vx += (targetVx - p.vx) * beltFriction;
                 p.vy += (targetVy - p.vy) * beltFriction;
             }
 
-            // Statische Haftreibung bei stehendem Band
             if (!isMoving) {
                 p.vx *= (1 - mu_i * 0.1);
             }
