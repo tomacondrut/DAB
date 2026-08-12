@@ -42,7 +42,7 @@ function saveDAB() {
         C: getVal('in_C', 2.0),
         eta: getVal('in_eta', 0.75),
         mu_g: getVal('in_mu_g', 0.60),
-        mu_i: getVal('in_mu_i', 0.50),
+        mu_i: getVal('in_mu_i', 0.40),
         flow_mode: document.querySelector('input[name="flow_mode"]:checked') ? document.querySelector('input[name="flow_mode"]:checked').value : 'geom'
     };
 

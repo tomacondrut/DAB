@@ -43,6 +43,7 @@
                 <h3 class="chapter-title">
                     3. Mechanik, Widerstände & Abzug
                     <button class="info-btn" style="float: right; width: auto; padding: 2px 10px; border-radius: 4px;" onclick="openAbzugModal()">Theorie Abzugskraft ℹ️</button>
+                    <button class="info-btn" style="float: right; width: auto; padding: 2px 10px; border-radius: 4px; margin-right: 10px; background: #e67e22;" onclick="openModal('modal_sim_info')">Simulation Engine ⚙️</button>
                 </h3>
                 <div class="canvas-wrapper">
                     <!-- Height auf 520 erhöht, um oben Platz für den doppelten Abstand zu schaffen -->
@@ -191,7 +192,7 @@
 
                         <div class="input-group">
                             <label>Innere Reibung Material (\(\mu_i\))</label>
-                            <input type="number" id="in_mu_i" value="0.50" step="0.05" min="0">
+                            <input type="number" id="in_mu_i" value="0.40" step="0.05" min="0">
                             <span class="unit">-</span>
                             <button class="info-btn" type="button" onclick="openModal('modal_mu_i')">i</button>
                         </div>
@@ -212,6 +213,81 @@
             <div class="result-row"><div class="result-item"><div class="result-label">Gesamtwiderstand (\(F_W\)):</div><div class="result-value" id="out_FW">- N</div><button class="info-btn" onclick="toggleInfo('info_FW')">i</button><div class="formula-box" id="info_FW"></div></div></div>
             <div class="result-row"><div class="result-item"><div class="result-label">Leistung an Trommel (\(P_W\)):</div><div class="result-value" id="out_PW">- W</div><button class="info-btn" onclick="toggleInfo('info_PW')">i</button><div class="formula-box" id="info_PW"></div></div></div>
             <div class="result-row"><div class="result-item"><div class="result-label">Erf. Motorleistung (\(P_{M,erf}\)):</div><div class="result-value" id="out_PM">- kW</div><button class="info-btn" onclick="toggleInfo('info_PM')">i</button><div class="formula-box" id="info_PM"></div></div></div>
+        </div>
+    </div>
+
+
+    <!-- Modal: Simulation Engine Info -->
+    <div id="modal_sim_info" class="modal-overlay" style="display:none;">
+        <div class="modal-content" style="max-width: 820px;">
+            <span class="modal-close" onclick="closeModal('modal_sim_info')">&times;</span>
+            <h2 style="color: #2c3e50;">⚙️ Physikalische Grundlagen der Partikelsimulation (PBD / DEM)</h2>
+
+            <div style="background: #eafaf1; border-left: 4px solid #009B4C; padding: 12px; margin-bottom: 20px; border-radius: 4px; font-weight: bold; font-family: monospace; font-size: 1.05em; color: #2c3e50;">
+                Simulierte Partikelanzahl (Aktiver Speicher): <span id="live_particle_count" style="color: #009B4C; font-size: 1.2em;">0</span>
+            </div>
+
+            <h3 style="color: #0056b3;">1. Kinematische Zeitintegration & Frame-Frequenz</h3>
+            <p>Die Trajektorie der Partikel wird über einen expliziten <em>Position-Based Dynamics</em> (PBD) Integrator gelöst. Die Zeitdiskretisierung erfolgt synchron zur Bildwiederholrate der Grafikkarte über <code>requestAnimationFrame</code>:</p>
+            <ul>
+                <li><strong>Zeitschrittweite (\(\Delta t\)):</strong> \(\Delta t \approx 16{,}67 \text{ ms}\) (entspricht nominell \(f = 60 \text{ Hz}\) bzw. \(60 \text{ FPS}\)).</li>
+                <li><strong>Solver-Iterationen (\(N_{\mathrm{iter}}\)):</strong> \(N_{\mathrm{iter}} = 10\) Sub-Iterationen pro Zeitschritt (\(600 \text{ Solver-Durchläufe/s}\)).</li>
+                <li><strong>Schwerkraft (\(g\)):</strong> Reale Erdbeschleunigung \(\vec{g} = (0, -9{,}81)^T \text{ m/s}^2\) vertikal nach unten.</li>
+            </ul>
+
+            <h3 style="color: #0056b3;">2. Kollisionserkennung & Positions-Constraint-Solver</h3>
+            <p>Zur Durchdringungsvermeidung zweier zylindrischer Partikel \(i\) und \(j\) mit Radien \(r_i, r_j\) und Euklidischer Distanz \(d = \|\vec{x}_i - \vec{x}_j\|_2\) gilt das Penetrations-Constraint \(C(\vec{x}_i, \vec{x}_j)\):</p>
+            <div class="modal-formula">
+                $$ C(\vec{x}_i, \vec{x}_j) = d - (r_i + r_j) \cdot k_{\mathrm{over}} \ge 0 $$
+            </div>
+            <p>Bei einer Penetration (\(C < 0\)) berechnet der Solver im Sub-Step die korrigierende Positionsverschiebung \(\Delta \vec{x}\) unter Verwendung eines Over-Relaxation-Faktors \(\omega = 0{,}60\) zur Stabilisierung der Volumenerhaltung:</p>
+            <div class="modal-formula">
+                $$ \Delta \vec{x}_i = +\frac{1}{2} \cdot \omega \cdot \left( (r_i + r_j)\cdot k_{\mathrm{over}} - d \right) \cdot \frac{\vec{x}_i - \vec{x}_j}{d} $$
+            </div>
+            <p>Zur Optimierung der Rechenkomplexität wird die Paar-Kollision als symmetrische Halbmatrix (\(j = i + 1\)) in \(\mathcal{O}\left(\frac{N(N-1)}{2}\right)\) evaluiert.</p>
+
+            <h3 style="color: #0056b3;">3. Mathematische Modellierung der Reibwerte (\(\mu_G\) & \(\mu_i\))</h3>
+            <p>Die Reibwerte wirken nicht als vereinfachte Bremsfaktoren, sondern greifen direkt auf Vektor- und Bewegungsebene in den Solver ein:</p>
+
+            <p>
+                <strong>A) Wand- & Gurtreibung (\(\mu_G\) – Wall/Belt Friction):</strong><br>
+                Liegt ein Partikel auf dem Gurt (\(y \le y_{\mathrm{Belt}} + r_i\)), wird dem Partikel über den tangentialen Kraftschluss der Geschwindigkeitsvektor des Fördergurts \(\vec{v}_{\mathrm{Belt}} = (v \cdot \cos\alpha, v \cdot \sin\alpha)^T\) aufgeprägt:
+            </p>
+            <div class="modal-formula">
+                $$ \vec{v}_i^{(t+\Delta t)} = \vec{v}_i^{(t)} + \min\left(1{,}0, \, 1{,}2 \cdot \mu_G\right) \cdot \left(\vec{v}_{\mathrm{Belt}} - \vec{v}_i^{(t)}\right) $$
+            </div>
+            <p>Bei stehendem Band (\(v = 0\)) geht \(\mu_G\) direkt in die Coulombsche Haftreibungsbedingung über, unterbindet Gleitbewegungen und verhindert das Ausfließen an der Einlauf-Rückenwand.</p>
+
+            <p>
+                <strong>B) Innerer Reibungswinkel & Scherkraft (\(\mu_i = \tan\phi_i\) – Internal Friction):</strong><br>
+                Die innere Reibung beschreibt das Verhakungsverhalten der Körner untereinander und steuert zwei physikalische Phänomene:
+            </p>
+            <ul>
+                <li>
+                    <strong>Schüttwinkel-Anisotropie:</strong> Bei Berührung zweier Partikel dämpft \(\mu_i\) die orthogonale Komponente der PBD-Positionskorrektur um den Scherkraftfaktor \(\eta_{\mathrm{shear}}\):
+                    $$ \eta_{\mathrm{shear}} = \max\left(0{,}1, \, 1{,}0 - 0{,}85 \cdot \mu_i\right) $$
+                    Dadurch wird das seitliche Ausweichen blockiert und ein stabiler Böschungswinkel entsprechend \(\phi_i = \arctan(\mu_i)\) ausgebildet.
+                </li>
+                <li>
+                    <strong>Viskoser Impulstransfer (Momentum Exchange):</strong> Zwischen benachbarten Partikeln im Abstand \(d < 1{,}1(r_i+r_j)\) wird über den Kopplungswert \(\lambda_{\mathrm{shear}} = \min(1{,}0, \, 1{,}5 \cdot \mu_i)\) eine Geschwindigkeits-Angleichung durchgeführt:
+                    $$ \vec{v}_i^{\mathrm{neu}} = (1 - \lambda_{\mathrm{shear}})\vec{v}_i + \lambda_{\mathrm{shear}} \cdot \left(\frac{\vec{v}_i + \vec{v}_j}{2}\right) $$
+                    Dies simuliert das blockhafte Abströmen des Schüttguts unter dem Schieberauslass.
+                </li>
+            </ul>
+
+            <h3 style="color: #0056b3;">4. Silo-Auflastdruck (Overburden Pressure)</h3>
+            <p>Da die PBD-Simulation aus Performancegründen nur den unteren Abzugsbereich des Einlaufkastens berechnet, fehlt dem Material das Eigengewicht der darüberstehenden Materialsäule. Um das Schüttgut dennoch physikalisch korrekt zu verdichten und auf den Gurt zu pressen, wird den Partikeln innerhalb der Einlaufzone (\(x \le L_{\mathrm{box}}\)) eine vom Füllstand \(h_{\mathrm{Silo}}\) abhängige zusätzliche abwärts gerichtete Beschleunigung \(a_{\mathrm{Silo}}\) aufgeprägt:</p>
+            <div class="modal-formula">
+                $$ a_{\mathrm{Silo}} = h_{\mathrm{Silo}} \cdot 5{,}0 \text{ m/s}^2 $$
+                $$ \vec{v}_{y, \, \mathrm{box}}^{(t+\Delta t)} = \vec{v}_{y, \, \mathrm{box}}^{(t)} - (g + a_{\mathrm{Silo}}) \cdot \Delta t $$
+            </div>
+            <p>Sobald das Material den Auslassschieber passiert, entfällt \(a_{\mathrm{Silo}}\) und das Schüttgut unterliegt wieder der regulären Erdbeschleunigung (\(g = 9{,}81 \text{ m/s}^2\)).</p>
+
+            <h3 style="color: #0056b3;">5. Räumliche Rasterung & Massenstrom-Kopplung</h3>
+            <p>Zur Vermeidung von Überdruckartefakten ist der Einlaufkasten in orthogonale Spatial-Bins der Breite \(w_{\mathrm{col}} = 1{,}5 \cdot r\) unterteilt. Ein Spawner-Algorithmus ermittelt pro Zeitschritt das Höhenprofil \(y_{\mathrm{max}}(x)\) jeder Spalte und speist Partikel nur exakt bei Identifikation eines physikalischen Vakuums nach:</p>
+            <div class="modal-formula">
+                $$ y_{\mathrm{target}} - y_{\mathrm{max}} > 1{,}8 \cdot r $$
+            </div>
         </div>
     </div>
 
@@ -268,14 +344,21 @@
     <div id="modal_mu_i" class="modal-overlay" style="display:none;">
         <div class="modal-content">
             <span class="modal-close" onclick="closeModal('modal_mu_i')">&times;</span>
-            <h2>Innerer Reibwert des Schüttguts (\(\mu_i = \tan\phi_i\))</h2>
+            <h2 style="color: #2c3e50;">Innerer Reibwert des Schüttguts (\(\mu_i\))</h2>
             <p>Beschreibt das Scherverhalten des Schüttguts in sich selbst. Er bestimmt die Kraft, die erforderlich ist, um das abgezogene Materialbett am Schieberauslass von der darüber ruhenden Materialsäule im Kasten abzuscheren.</p>
 
-            <h3>Ermittlung & Annahme (\(\mu_i = 0{,}50\))</h3>
+            <h3 style="color: #0056b3;">Reale Ermittlung & Theorie</h3>
             <ul>
-                <li>Verknüpft mit dem inneren Reibungswinkel \(\phi_i\) über \(\mu_i = \tan(\phi_i)\).</li>
-                <li><strong>Ermittlung:</strong> Im Triaxialtest oder Direct Shear Test. Ein Reibwert von 0,50 entspricht einem inneren Reibungswinkel von ca. \(\phi_i \approx 26{,}5^\circ\).</li>
-                <li><strong>Praxiswert:</strong> Für rolligen bis leicht verhakenden Kies/Sand ist dieser Wert realistisch, da dynamische Erschütterungen beim Abzug den statischen Reibungswinkel (der meist bei 30–35° liegt) auf diesen effektiven Fließ-Scherwert reduzieren.</li>
+                <li>In der realen Schüttgutmechanik ist der Reibwert direkt mit dem inneren Reibungswinkel \(\phi_i\) über die Beziehung \(\mu_i = \tan(\phi_i)\) verknüpft.</li>
+                <li><strong>Ermittlung:</strong> Im Triaxialtest oder Jenike-Schergerät. Ein typischer Schüttwinkel von \(30^\circ\) entspricht theoretisch einem Reibwert von ca. \(0{,}57\). Unter dynamischem Abzug verringert sich dieser effektive Fließ-Scherwert oft leicht.</li>
+            </ul>
+
+            <h3 style="color: #009B4C;">Implementierung in der PBD-Simulation</h3>
+            <p>Da diese Echtzeit-Simulation auf Position-Based Dynamics (PBD) und nicht auf einer rechenintensiven Discrete Element Method (DEM) basiert, dient der hier eingegebene \(\mu_i\)-Wert als <strong>phänomenologischer Skalierungsfaktor</strong>:</p>
+            <ul>
+                <li>Er skaliert heuristisch die transversale Verschiebungsdämpfung und die viskose Impulskopplung zwischen den Partikeln.</li>
+                <li><strong>Praxiswert Simulation (\(\mu_i = 0{,}40\)):</strong> Da die PBD-Engine bei streng mathematischen Werten (\(> 0{,}50\)) zu einem optisch übermäßig kohäsiven (klebrigen) Verhalten neigt, liefert ein leicht reduzierter Parameterwert von \(0{,}40\) in dieser spezifischen Engine ein optisch und kinematisch realistischeres Fließbild für rolliges Schüttgut.</li>
+                <li>Für die statische Berechnung der <strong>erforderlichen Motorleistung</strong> wird dieser Wert jedoch 1:1 formeltreu nach VDI/Schüttgut-Standards herangezogen.</li>
             </ul>
         </div>
     </div>

@@ -6,16 +6,25 @@
  */
 
 // NEU: Synchronisation von Input-Feld und Canvas-Slider
-function syncSpeed(val) {
+function syncSpeed(val, source = 'manual') {
     let elIn = document.getElementById('in_v');
     let elSl = document.getElementById('canvas_v_slider');
     let elVal = document.getElementById('canvas_v_val');
-    
-    if (elIn && elIn.value !== val) elIn.value = val;
-    if (elSl && elSl.value !== val) elSl.value = val;
-    if (elVal) elVal.innerText = parseFloat(val).toFixed(2);
-    
-    updateLiveConversion();
+
+    let numVal = parseFloat(val);
+    if (isNaN(numVal)) numVal = 0;
+    if (numVal > 2.0) numVal = 2.0; // Hard-Cap: Maximale Bandgeschwindigkeit
+    if (numVal < 0) numVal = 0;
+
+    let strVal = numVal.toFixed(2);
+
+    if (elIn && elIn.value !== strVal) elIn.value = strVal;
+    if (elSl && parseFloat(elSl.value) !== numVal) elSl.value = numVal;
+    if (elVal) elVal.innerText = strVal;
+
+    if (source === 'manual') {
+        updateLiveConversion('speed');
+    }
 }
 
 function switchTab(tabId) {
@@ -36,9 +45,9 @@ function toggleInfo(infoId) {
 
 function toggleFlowMode() {
     const modeEl = document.querySelector('input[name="flow_mode"]:checked');
-    if(!modeEl) return;
+    if (!modeEl) return;
     const mode = modeEl.value;
-    
+
     document.getElementById('container_geom').style.display = 'none';
     document.getElementById('container_vol').style.display = 'none';
     document.getElementById('container_mass').style.display = 'none';
@@ -46,35 +55,86 @@ function toggleFlowMode() {
     if (mode === 'geom') document.getElementById('container_geom').style.display = 'block';
     if (mode === 'vol') document.getElementById('container_vol').style.display = 'flex';
     if (mode === 'mass') document.getElementById('container_mass').style.display = 'flex';
-    
-    updateLiveConversion();
+
+    updateLiveConversion('toggle');
 }
 
-function updateLiveConversion() {
+function updateLiveConversion(source = 'other') {
     let elRho = document.getElementById('in_rho');
     let elV = document.getElementById('in_v');
     let elB = document.getElementById('in_b');
     let elHk = document.getElementById('in_h_klappe');
     let elMode = document.querySelector('input[name="flow_mode"]:checked');
-    
-    if(!elRho || !elV || !elB || !elHk || !elMode) return;
+
+    if (!elRho || !elV || !elB || !elHk || !elMode) return;
 
     const rho = parseFloat(elRho.value) || 0;
-    const v = parseFloat(elV.value) || 0;
-    const b = parseFloat(elB.value) || 0; 
+    let v = parseFloat(elV.value) || 0;
+    const b = parseFloat(elB.value) || 0;
     const h_K = parseFloat(elHk.value) || 0;
     const mode = elMode.value;
 
+    const MAX_V = 2.0; // Deckelung der Geschwindigkeit auf das physikalische Limit
+
     if (mode === 'geom') {
+        // Geschwindigkeit diktiert den Flow
         const Iv = b * h_K * v * 3600;
         const Im = (Iv * rho) / 3600;
         document.getElementById('live_geom_display').innerText = `Theoretischer Durchsatz: ${Iv.toFixed(2)} m³/h (${Im.toFixed(2)} kg/s)`;
+
+        // Werte für die Eingabefelder im Hintergrund vorbereiten, für nahtlose Übergänge
+        if (source === 'speed' || source === 'toggle' || source === 'other') {
+            let elIv = document.getElementById('in_Iv');
+            let elIm = document.getElementById('in_Im');
+            if (elIv) elIv.value = Iv.toFixed(1);
+            if (elIm) elIm.value = Im.toFixed(2);
+        }
+
     } else if (mode === 'vol') {
-        const Iv = parseFloat(document.getElementById('in_Iv').value) || 0;
+        let elIv = document.getElementById('in_Iv');
+        let Iv = parseFloat(elIv.value) || 0;
+
+        if (source === 'speed') {
+            // Slider wurde manuell bewegt -> Volumenstrom anpassen
+            Iv = b * h_K * v * 3600;
+            elIv.value = Iv.toFixed(1);
+        } else {
+            // Flow diktiert die Geschwindigkeit
+            let required_v = (b > 0 && h_K > 0) ? Iv / (b * h_K * 3600) : 0;
+
+            // Flow-Cap: Geschwindigkeit ist zu hoch für die Anlage
+            if (required_v > MAX_V) {
+                required_v = MAX_V;
+                Iv = b * h_K * MAX_V * 3600; // Zurückrechnen auf maximal möglichen Flow
+                elIv.value = Iv.toFixed(1);
+            }
+            syncSpeed(required_v, 'auto');
+        }
+
         const Im = (Iv * rho) / 3600;
         document.getElementById('live_mass_display').innerText = `entspricht: ${Im.toFixed(2)} kg/s`;
-    } else {
-        const Im = parseFloat(document.getElementById('in_Im').value) || 0;
+
+    } else if (mode === 'mass') {
+        let elIm = document.getElementById('in_Im');
+        let Im = parseFloat(elIm.value) || 0;
+
+        if (source === 'speed') {
+            // Slider wurde manuell bewegt -> Massenstrom anpassen
+            Im = b * h_K * v * rho;
+            elIm.value = Im.toFixed(2);
+        } else {
+            // Flow diktiert die Geschwindigkeit
+            let required_v = (b > 0 && h_K > 0 && rho > 0) ? Im / (b * h_K * rho) : 0;
+
+            // Flow-Cap: Geschwindigkeit ist zu hoch für die Anlage
+            if (required_v > MAX_V) {
+                required_v = MAX_V;
+                Im = b * h_K * MAX_V * rho; // Zurückrechnen auf maximal möglichen Flow
+                elIm.value = Im.toFixed(2);
+            }
+            syncSpeed(required_v, 'auto');
+        }
+
         const Iv = rho > 0 ? (Im * 3600) / rho : 0;
         document.getElementById('live_vol_display').innerText = `entspricht: ${Iv.toFixed(2)} m³/h`;
     }
@@ -315,13 +375,15 @@ function calculate() {
     const PM = PW / eta;
     const PM_kW = PM / 1000;
 
-    // ... [Bestehender Code der calculate() Funktion bis zu den innerText Setzungen] ...
+    // --- HILFSFUNKTIONEN FÜR KILONEWTON AUTOMATIK ---
+    const fUI = (val) => val >= 1000 ? (val / 1000).toFixed(2) + " kN" : val.toFixed(2) + " N";
+    const fTex = (val) => val >= 1000 ? (val / 1000).toFixed(2) + " \\text{ kN}" : val.toFixed(2) + " \\text{ N}";
 
     document.getElementById('out_mL').innerText = mL.toFixed(2) + " kg/m";
-    document.getElementById('out_FAbz').innerText = F_Abzug.toFixed(2) + " N";
-    document.getElementById('out_FSt').innerText = FSt.toFixed(2) + " N";
-    document.getElementById('out_FH').innerText = FH.toFixed(2) + " N";
-    document.getElementById('out_FW').innerText = FW.toFixed(2) + " N";
+    document.getElementById('out_FAbz').innerText = fUI(F_Abzug);
+    document.getElementById('out_FSt').innerText = fUI(FSt);
+    document.getElementById('out_FH').innerText = fUI(FH);
+    document.getElementById('out_FW').innerText = fUI(FW);
     document.getElementById('out_PW').innerText = PW.toFixed(2) + " W";
     document.getElementById('out_PM').innerText = PM_kW.toFixed(3) + " kW";
 
@@ -329,14 +391,14 @@ function calculate() {
 
     const html_FAbz = String.raw`
     <p style="margin:0 0 5px 0; text-align:left;"><strong>Ermittlung der Abzugskraft:</strong></p>
-    $$ F_{Boden} = \rho \cdot g \cdot h_{Silo} \cdot L_{box} \cdot b = ${F_Boden.toFixed(2)} \text{ N} $$
-    $$ F_{Abzug} = F_{Boden} \cdot \mu_G + (\rho \cdot g \cdot h_{Silo} \cdot b \cdot h_{Klappe} \cdot \mu_i) = ${F_Abzug.toFixed(2)} \text{ N} $$
+    $$ F_{\mathrm{Boden}} = \rho \cdot g \cdot h_{\mathrm{Silo}} \cdot L_{\mathrm{box}} \cdot b = ${fTex(F_Boden)} $$
+    $$ F_{\mathrm{Abzug}} = F_{\mathrm{Boden}} \cdot \mu_G + (\rho \cdot g \cdot h_{\mathrm{Silo}} \cdot b \cdot h_{\mathrm{Klappe}} \cdot \mu_i) = ${fTex(F_Abzug)} $$
     `;
-    const html_FSt = String.raw`$$ F_{St} = H \cdot g \cdot m_L' = ${FSt.toFixed(2)} \text{ N} $$`;
-    const html_FH = String.raw`$$ F_H = L \cdot f \cdot g \cdot (m_L' + m_{leer}') = ${FH.toFixed(2)} \text{ N} $$`;
-    const html_FW = String.raw`$$ F_W = C \cdot F_H + F_{St} + F_{Abzug} = ${FW.toFixed(2)} \text{ N} $$`;
-    const html_PW = String.raw`$$ P_W = F_W \cdot v = ${PW.toFixed(2)} \text{ W} $$`;
-    const html_PM = String.raw`$$ P_{M,erf} = \frac{P_W}{\eta_{ges}} = ${PM_kW.toFixed(3)} \text{ kW} $$`;
+    const html_FSt = String.raw`$$ F_{\mathrm{St}} = H \cdot g \cdot m_L' = ${fTex(FSt)} $$`;
+    const html_FH = String.raw`$$ F_H = L \cdot f \cdot g \cdot (m_L' + m_{\mathrm{leer}}') = ${fTex(FH)} $$`;
+    const html_FW = String.raw`$$ F_W = C \cdot F_H + F_{\mathrm{St}} + F_{\mathrm{Abzug}} = ${fTex(FW)} $$`;
+    const html_PW = String.raw`$$ P_W = F_W \cdot v = ${PW >= 1000 ? (PW / 1000).toFixed(2) + " \\text{ kW}" : PW.toFixed(2) + " \\text{ W}"} $$`;
+    const html_PM = String.raw`$$ P_{M,\mathrm{erf}} = \frac{P_W}{\eta_{\mathrm{ges}}} = ${PM_kW.toFixed(3)} \text{ kW} $$`;
 
     document.getElementById('info_FAbz').innerHTML = html_FAbz;
     document.getElementById('info_FSt').innerHTML = html_FSt;
@@ -345,7 +407,7 @@ function calculate() {
     document.getElementById('info_PW').innerHTML = html_PW;
     document.getElementById('info_PM').innerHTML = html_PM;
 
-    // NEU: Saubere Roh-Formeln für den PDF-Export im Speicher ablegen
+    // Speichern für den PDF-Export
     window.lastCalculatedMath = {
         info_mL: latex_mL,
         info_FAbz: html_FAbz,

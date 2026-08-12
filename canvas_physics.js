@@ -13,10 +13,6 @@ let beltOffset = 0;
 let particles = [];
 let isAnimating = true;
 
-// NEU: Feste Physik-Zeitschritte für absolut konstantes Materialverhalten
-const PHYSICS_STEP = 0.01; // 100 Hz (100 Updates pro Sekunde)
-let accumulator = 0;
-
 const BELT_THICKNESS = 0.010; 
 // Erhöhter optischer Radius (20mm bzw 40mm Durchmesser)
 const currentSimRadius = 0.020; 
@@ -76,7 +72,6 @@ function toggleAnimation() {
     if (isAnimating) {
         btn.innerText = "❚❚";
         lastTime = performance.now();
-        accumulator = 0; // NEU: Akkumulator beim Fortsetzen resetten
         animId = requestAnimationFrame(renderLoop);
     } else {
         btn.innerText = "▶";
@@ -91,20 +86,55 @@ function drawDimTick(ctx, x, y, isHovered) {
     ctx.lineWidth = 0.8; ctx.stroke();
 }
 
-function drawCenterCross(ctx, x, y, radius, scale, rotAngle, isHovered) {
-    const r = radius * scale * 1.3;
+/*
+ * [BREADCRUMB: 2026-08-12]
+ * DOMÄNE: Canvas Rendering & UI - drawDrumArrow
+ * UPDATE: 
+ * - Mittelkreuze durch gebogene Drehrichtungspfeile (3/4 Kreisbogen mit Pfeilspitze) im Trommelinneren ersetzt.
+ */
+/*
+ * [BREADCRUMB: 2026-08-12]
+ * DOMÄNE: Canvas Rendering & UI - drawDrumArrow
+ * UPDATE: 
+ * - Gebogene Drehrichtungspfeile rotieren nun dynamisch mit der Trommelbewegung.
+ */
+function drawDrumArrow(ctx, x, y, radius, scale, rotAngle, isHovered) {
+    const r = radius * scale * 0.55; // Pfeilradius relativ zur Trommel
+    const startAngle = -Math.PI * 0.75;
+    const endAngle = Math.PI * 0.4;
+
     ctx.save();
     ctx.translate(x, y);
-    ctx.rotate(rotAngle); 
+    ctx.rotate(rotAngle); // Dynamische Rotation basierend auf dem Band-Offset
+
+    // Gebogener Bogen
     ctx.beginPath();
-    ctx.moveTo(-r, 0); ctx.lineTo(r, 0);
-    ctx.moveTo(0, -r); ctx.lineTo(0, r);
-    ctx.strokeStyle = isHovered ? '#d9534f' : '#c0392b';
-    ctx.lineWidth = 0.8;
-    ctx.setLineDash([10, 3, 2, 3]);
+    ctx.arc(0, 0, r, startAngle, endAngle, false);
+    ctx.strokeStyle = isHovered ? '#d9534f' : '#333333';
+    ctx.lineWidth = 1.5;
     ctx.stroke();
+
+    // Pfeilspitze
+    const arrowX = r * Math.cos(endAngle);
+    const arrowY = r * Math.sin(endAngle);
+    const arrowSize = 4.5;
+    const tangentAngle = endAngle + Math.PI / 2;
+
+    ctx.beginPath();
+    ctx.moveTo(arrowX, arrowY);
+    ctx.lineTo(
+        arrowX - arrowSize * Math.cos(tangentAngle - Math.PI / 6),
+        arrowY - arrowSize * Math.sin(tangentAngle - Math.PI / 6)
+    );
+    ctx.lineTo(
+        arrowX - arrowSize * Math.cos(tangentAngle + Math.PI / 6),
+        arrowY - arrowSize * Math.sin(tangentAngle + Math.PI / 6)
+    );
+    ctx.closePath();
+    ctx.fillStyle = isHovered ? '#d9534f' : '#333333';
+    ctx.fill();
+
     ctx.restore();
-    ctx.setLineDash([]);
 }
 
 /*
@@ -125,8 +155,10 @@ function initParticles() {
     const rU_outer = Math.abs(DU / 2) + BELT_THICKNESS;
     const U_top_y = rU_outer * Math.cos(alpha);
 
+    // REDUZIERT: Nur noch minimaler unsichtbarer Puffer über der Box
     const physicsBoxHeight = h_klappe_max + 0.15;
 
+    // Raster-Spawnen: Breiter fächern, da Überlappung erwünscht
     const colWidth = currentSimRadius * 1.5;
     const numCols = Math.floor((L_box - 0.04) / colWidth);
 
@@ -144,32 +176,23 @@ function initParticles() {
         }
     }
 
-    // Warmup ebenfalls mit dem konstanten Physik-Schritt
-    for (let k = 0; k < 60; k++) updatePhysics(PHYSICS_STEP, true);
+    for (let k = 0; k < 60; k++) updatePhysics(0.016, true);
 }
 
 function renderLoop(timestamp) {
     if (!isAnimating) return;
     if (!lastTime) lastTime = timestamp;
-    
-    // Wie viel Zeit ist seit dem letzten gezeichneten Bild vergangen?
-    let frameTime = (timestamp - lastTime) / 1000;
-    
-    // "Spiral of Death" verhindern (wenn der Tab im Hintergrund war)
-    if (frameTime > 0.1) frameTime = 0.1; 
-    
+    let dt = (timestamp - lastTime) / 1000;
+    if (dt > 0.1) dt = 0.1;
     lastTime = timestamp;
-    accumulator += frameTime;
 
-    // NEU: Die Physik so oft aufrufen, bis sie die reale Zeit eingeholt hat.
-    // Ein 144Hz Monitor ruft dies ca. alle 0.0069s auf -> Physik pausiert teils für einen Frame.
-    // Ein 60Hz Monitor ruft dies ca. alle 0.016s auf -> Physik rechnet manchmal 2x pro Frame.
-    while (accumulator >= PHYSICS_STEP) {
-        updatePhysics(PHYSICS_STEP, false);
-        accumulator -= PHYSICS_STEP;
-    }
-
+    updatePhysics(dt, false);
     drawConveyorCanvas();
+
+    // NEU: Live-Anzeige der Partikel im Info-Modal aktualisieren
+    const elPtc = document.getElementById('live_particle_count');
+    if (elPtc) elPtc.innerText = particles.length;
+
     animId = requestAnimationFrame(renderLoop);
 }
 
@@ -318,7 +341,7 @@ function updatePhysics(dt, isWarmup = false) {
 
     // NEU: Reibwerte direkt aus der UI abrufen
     const mu_g = getVal('in_mu_g', 0.60);
-    const mu_i = getVal('in_mu_i', 0.50);
+    const mu_i = getVal('in_mu_i', 0.40);
 
     const DU = getVal('in_DU', 0.193);
     const DA = getVal('in_DA', 0.219);
@@ -367,6 +390,15 @@ function updatePhysics(dt, isWarmup = false) {
     if (!isWarmup) beltOffset += anim_v_belt * dt;
 
     // --- GAP SPAWNER ---
+    // --- GAP SPAWNER (REIN VOLUMENGESTEUERT) ---
+    /*
+     * [BREADCRUMB: 2026-08-12]
+     * DOMÄNE: Canvas Physik-Engine - updatePhysics (Always-On Refill)
+     * UPDATE: 
+     * - Spawner prüft den Füllstand nun IMMER, auch bei stehendem Band (v = 0).
+     * - Verhindert das Leerlaufen des Kastens in allen Betriebszuständen.
+     * - Sanfte Batch-Größe bei Stillstand verhindert Überdruckartefakte.
+     */
     if (!isWarmup) {
         const colWidth = currentSimRadius * 1.5;
         const numCols = Math.floor((L_box - 0.04) / colWidth);
@@ -381,44 +413,71 @@ function updatePhysics(dt, isWarmup = false) {
             }
         }
 
-        // NEU: Spawner schaltet bei v=0 ab, damit kein neuer Druck im Kasten entsteht!
-        const spawnBatchSize = anim_v_belt > 0.01 ? Math.max(1, Math.min(4, Math.ceil(anim_v_belt * 1.8))) : 0;
+        // Immer aktiv: Bei v = 0 wird sanft mit Batch-Größe 1 nachgefüllt
+        const spawnBatchSize = anim_v_belt > 0.0001
+            ? Math.max(1, Math.min(4, Math.ceil(anim_v_belt * 2.5)))
+            : 1;
 
-        if (spawnBatchSize > 0) {
-            for (let c = 0; c < numCols; c++) {
-                let px = 0.02 + c * colWidth;
-                let beltY = U_top_y + Math.tan(alpha) * px;
-                let targetY = beltY + physicsBoxHeight;
+        for (let c = 0; c < numCols; c++) {
+            let px = 0.02 + c * colWidth;
+            let beltY = U_top_y + Math.tan(alpha) * px;
+            let targetY = beltY + physicsBoxHeight;
 
-                let currentMaxY = colMaxY[c];
-                if (currentMaxY === 0) currentMaxY = beltY;
+            let currentMaxY = colMaxY[c];
+            if (currentMaxY === 0) currentMaxY = beltY;
 
-                let gap = targetY - currentMaxY;
+            let gap = targetY - currentMaxY;
 
-                if (gap > currentSimRadius * 1.8 && particles.length < 8000) {
-                    let numToSpawn = Math.min(spawnBatchSize, Math.floor(gap / (currentSimRadius * 1.5)));
-                    for (let s = 0; s < numToSpawn; s++) {
-                        let py = targetY - (s * currentSimRadius * 1.5);
-                        let newP = new Particle(px + (Math.random() - 0.5) * 0.005, py, currentSimRadius);
-                        newP.vy = -1.0;
-                        particles.push(newP);
-                    }
+            // Sobald eine Lücke da ist, wird nachgespeist (egal ob Band steht oder läuft)
+            if (gap > currentSimRadius * 1.5 && particles.length < 8000) {
+                let numToSpawn = Math.min(spawnBatchSize, Math.floor(gap / (currentSimRadius * 1.2)));
+                for (let s = 0; s < numToSpawn; s++) {
+                    let py = targetY - (s * currentSimRadius * 1.2);
+                    let newP = new Particle(px + (Math.random() - 0.5) * 0.004, py, currentSimRadius);
+
+                    newP.vy = -0.5; // Sanfter Fallimpuls nach unten
+                    particles.push(newP);
                 }
             }
         }
     }
 
     // --- 1. INTEGRATION (Vorhersage der Bewegung) ---
+    /*
+     * [BREADCRUMB: 2026-08-12]
+     * DOMÄNE: Canvas Physik-Engine - updatePhysics (Dynamic Overburden Pressure)
+     * UPDATE: 
+     * - Silo-Auflastdruck (a_silo) wird bei ruhendem Band (anim_v_belt < 0.0001) deaktiviert.
+     * - Nachgespawnte Partikel lagern sich bei v = 0 druckfrei ab, ohne Material aus dem Kasten zu pressen.
+     * - Bei laufendem Band greift der Auflastdruck wieder voll proportional zur Silohöhe.
+     */
     const targetVx = anim_v_belt * Math.cos(alpha);
     const targetVy = anim_v_belt * Math.sin(alpha);
+
+    // Silo-Höhe für den Auflastdruck abrufen
+    const h_silo_val = getVal('in_h_silo', 3.0);
+
+    // NEU: Auflastdruck ist NUR aktiv, wenn das Band sich auch bewegt!
+    const isMoving = anim_v_belt > 0.0001;
+    const a_silo = isMoving ? (h_silo_val * 5.0) : 0;
 
     for (let p of particles) {
         p.prevX = p.x;
         p.prevY = p.y;
 
         if (p.state === 'box') {
-            p.vy -= 25.0 * dt; // Schwerkraft
-            if (p.vy < -2.0) p.vy = -2.0;
+            let current_g = 9.81;
+
+            // Silo-Druck wirkt nur im geschlossenen Einlaufkasten und nur bei Bandlauf
+            if (p.x <= L_box) {
+                current_g += a_silo;
+            }
+
+            p.vy -= current_g * dt;
+
+            // Terminal Velocity: Bei Stillstand sanft (-5.0), bei Fahrt druckskaliert
+            let fallLimit = -5.0 - (a_silo * 0.1);
+            if (p.vy < fallLimit) p.vy = fallLimit;
 
             let beltY = U_top_y + Math.tan(alpha) * p.x;
             let isTouchingBelt = (p.y <= beltY + p.r + 0.05);
@@ -431,7 +490,7 @@ function updatePhysics(dt, isWarmup = false) {
             }
 
             // Statische Haftreibung bei stehendem Band
-            if (anim_v_belt < 0.01) {
+            if (!isMoving) {
                 p.vx *= (1 - mu_i * 0.1);
             }
 
@@ -1082,10 +1141,13 @@ function drawConveyorCanvas() {
     let particlesOnBelt = particles.filter(p => p.state === 'belt').length;
     if (h_klappe <= 0.001 && particlesOnBelt === 0) anim_v_belt = 0;
 
+    // Rotationswinkel anhand des Band-Offsets und der Trommelradien berechnen
     const rotU = beltOffset / rU_outer;
     const rotA = beltOffset / rA_outer;
-    drawCenterCross(ctx, tx(cx_U), ty(cy_U), rU, scale, rotU, hoveredDim === 'DU');
-    drawCenterCross(ctx, tx(cx_A), ty(cy_A), rA, scale, rotA, hoveredDim === 'DA');
+
+    // Dynamisch mitrotierende Pfeile zeichnen
+    drawDrumArrow(ctx, tx(cx_U), ty(cy_U), rU, scale, rotU, hoveredDim === 'DU');
+    drawDrumArrow(ctx, tx(cx_A), ty(cy_A), rA, scale, rotA, hoveredDim === 'DA');
 
     ctx.font = techFont;
 
@@ -1119,11 +1181,18 @@ function drawConveyorCanvas() {
     ctx.fillText(`L_Box = ${L_box.toFixed(2).replace('.', ',')} m`, (lx1 + lx2) / 2, dimY_Lbox - 4);
     addHitRect('L_box', lx1, dimY_Lbox - 30, lx2 - lx1, 40);
 
-    // ÄNDERUNG 1: Bemaßung H aus dem Abwurfbereich nach rechts schieben
+    /*
+         * [BREADCRUMB: 2026-08-12]
+         * DOMÄNE: Canvas Rendering & UI - drawConveyorCanvas (Bemaßung H Zentrierung)
+         * UPDATE: 
+         * - Y-Position des Bemaßungstextes H exakt auf den Mittelpunkt der vertikalen Maßlinie gesetzt.
+         * - textBaseline auf 'middle' gestellt, um echte vertikale Zentrierung an der Maßlinie zu garantieren.
+         */
     let colorH = hoveredDim === 'H' ? '#d9534f' : dimColor;
-    const dimX_H = Math.max(tx(cx_A) + 120, ax_top + 130); // Mehr Abstand nach rechts!
+    const dimX_H = Math.max(tx(cx_A) + 120, ax_top + 130);
     const dimX_Alpha = dimX_H + 90;
 
+    // Hilfslinien ziehen
     ctx.beginPath();
     ctx.moveTo(ux_top, uy_top); ctx.lineTo(dimX_Alpha + 20, uy_top);
     ctx.strokeStyle = colorH; ctx.lineWidth = 0.5; ctx.setLineDash([8, 4]); ctx.stroke();
@@ -1132,14 +1201,21 @@ function drawConveyorCanvas() {
     ctx.moveTo(ax_top, ay_top); ctx.lineTo(dimX_H + 5, ay_top);
     ctx.strokeStyle = colorH; ctx.lineWidth = 0.5; ctx.stroke();
 
+    // Maßlinie ziehen
     ctx.beginPath();
     ctx.moveTo(dimX_H, uy_top); ctx.lineTo(dimX_H, ay_top);
     ctx.strokeStyle = hoveredDim === 'H' ? '#d9534f' : '#0056b3'; ctx.lineWidth = hoveredDim === 'H' ? 1.2 : 0.8; ctx.stroke();
     drawDimTick(ctx, dimX_H, uy_top, hoveredDim === 'H'); drawDimTick(ctx, dimX_H, ay_top, hoveredDim === 'H');
 
+    // EXAKTE ZENTRIERUNG DES TEXTES
     const textH = `H = ${typeof currentH !== 'undefined' ? currentH.toFixed(2).replace('.', ',') : 0} m`;
+    const midY_H = (uy_top + ay_top) / 2; // Mathematische Mitte der vertikalen Maßlinie
+
     ctx.fillStyle = hoveredDim === 'H' ? '#d9534f' : '#0056b3';
-    ctx.fillText(textH, dimX_H + 8, (uy_top + ay_top) / 2 + 4);
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle'; // Richtet die Schrift vertikal mittig am Punkt aus
+    ctx.fillText(textH, dimX_H + 8, midY_H);
+
     addHitRect('H', dimX_H - 10, Math.min(uy_top, ay_top), 100, Math.abs(uy_top - ay_top));
 
     let colorAlpha = hoveredDim === 'alpha' ? '#d9534f' : dimColor;
