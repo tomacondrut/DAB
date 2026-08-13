@@ -151,30 +151,47 @@ function initParticles() {
         }
     }
 
-    for (let k = 0; k < 60; k++) updatePhysics(0.016, true);
+    for (let k = 0; k < 60; k++) updatePhysics(FIXED_DT, true);
 }
+/*
+ * [BREADCRUMB: 2026-08-13]
+ * DOMÄNE: Canvas Physik-Engine & Animation (Render Loop)
+ * UPDATE: 
+ * - Ziel: 100 Hz Fixed Time Step (FIXED_DT = 0.01) erzwingen.
+ * - Verworfen: Der 60 Hz Fallback (0.01666) wurde verworfen, da 100 Hz gewünscht ist.
+ * - Lösung: Spiral of Death Schutz mit Max 4 Steps & Panic-Drop hinzugefügt, um CPU-Überlastung auf mobilen Geräten abzufangen, ohne die 100 Hz Zielrate aufzugeben.
+ */
+
 
 function renderLoop(timestamp) {
     if (!isAnimating) return;
     if (!lastTime) lastTime = timestamp;
 
-    // 1. Vergangene Zeit seit dem letzten Frame messen
     let frameTime = (timestamp - lastTime) / 1000;
 
-    // Schutz gegen "Spiral of Death" (z.B. wenn der Tab im Hintergrund war)
+    // Schutz gegen extreme Lags bei Tab-Wechsel
     if (frameTime > 0.1) frameTime = 0.1;
     lastTime = timestamp;
 
-    // 2. Zeit in den Accumulator füllen
     accumulator += frameTime;
 
-    // 3. Physik in festen 100 Hz Schritten (0.01s) nachziehen
-    while (accumulator >= FIXED_DT) {
-        updatePhysics(FIXED_DT, false); // Übergibt nun strikt 0.01s statt dt
+    // Escape Hatch: Erlaubt maximal 4 Physik-Schritte pro Bild.
+    // Bei einem 60fps Display benötigt 100Hz im Schnitt 1,6 Schritte. 4 gibt genug Puffer.
+    let simulatedSteps = 0;
+    const MAX_STEPS = 4;
+
+    while (accumulator >= FIXED_DT && simulatedSteps < MAX_STEPS) {
+        updatePhysics(FIXED_DT, false);
         accumulator -= FIXED_DT;
+        simulatedSteps++;
     }
 
-    // 4. Grafik zeichnen (passiert weiterhin passend zur Bildwiederholrate)
+    // PANIK-DROP: Verhindert die Todesspirale auf langsamen Handys
+    // Überschüssige Zeit wird abgeworfen, um ein extremes Aufschaukeln zu stoppen.
+    if (accumulator >= FIXED_DT) {
+        accumulator = accumulator % FIXED_DT;
+    }
+
     drawConveyorCanvas();
 
     const elPtc = document.getElementById('live_particle_count');
@@ -371,12 +388,13 @@ function updatePhysics(dt, isWarmup = false) {
                     let nx = dx / dist;
                     let ny = dy / dist;
 
-                    let correction = overlap * 0.55;
+                    // FIX: Faktor auf 0.35 gesenkt für 100 Hz Stabilität
+                    let correction = overlap * 0.35;
                     let horizFriction = 1.0;
 
-                    // NEU: Dämpft die seitliche Kompression im Kasten, damit sich kein federnder Druck aufbaut
+                    // NEU: Dämpft die seitliche Kompression im Kasten
                     if (pi.x <= L_box || pj.x <= L_box) {
-                        nx *= 0.5; // Reduziert den horizontalen Rückstoß zwischen den Partikeln
+                        nx *= 0.5;
                     }
 
                     if (pi.state === 'box' && pj.state === 'box') {

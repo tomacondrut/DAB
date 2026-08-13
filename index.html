@@ -237,8 +237,8 @@
             <h3 style="color: #0056b3;">1. Kinematische Zeitintegration & Frame-Frequenz</h3>
             <p>Die Trajektorie der Partikel wird über einen expliziten <em>Position-Based Dynamics</em> (PBD) Integrator gelöst. Die Zeitdiskretisierung erfolgt synchron zur Bildwiederholrate der Grafikkarte über <code>requestAnimationFrame</code>:</p>
             <ul>
-                <li><strong>Zeitschrittweite (\(\Delta t\)):</strong> \(\Delta t \approx 16{,}67 \text{ ms}\) (entspricht nominell \(f = 60 \text{ Hz}\) bzw. \(60 \text{ FPS}\)).</li>
-                <li><strong>Solver-Iterationen (\(N_{\mathrm{iter}}\)):</strong> \(N_{\mathrm{iter}} = 10\) Sub-Iterationen pro Zeitschritt (\(600 \text{ Solver-Durchläufe/s}\)).</li>
+                <li><strong>Zeitschrittweite (\(\Delta t\)):</strong> \(\Delta t = 10{,}00 \text{ ms}\) (Fixierter physikalischer Zeitschritt bei \(f = 100 \text{ Hz}\), entkoppelt von der GPU-Framerate).</li>
+                <li><strong>Solver-Iterationen (\(N_{\mathrm{iter}}\)):</strong> \(N_{\mathrm{iter}} = 10\) Sub-Iterationen pro Zeitschritt (\(1000 \text{ Solver-Durchläufe/s}\)).</li>
                 <li><strong>Schwerkraft (\(g\)):</strong> Reale Erdbeschleunigung \(\vec{g} = (0, -9{,}81)^T \text{ m/s}^2\) vertikal nach unten.</li>
             </ul>
 
