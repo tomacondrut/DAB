@@ -66,6 +66,7 @@ function toggleAnimation() {
     if (isAnimating) {
         btn.innerText = "❚❚";
         lastTime = performance.now();
+        accumulator = 0; // WICHTIG: Zeitspeicher zurücksetzen
         animId = requestAnimationFrame(renderLoop);
     } else {
         btn.innerText = "▶";
@@ -156,11 +157,24 @@ function initParticles() {
 function renderLoop(timestamp) {
     if (!isAnimating) return;
     if (!lastTime) lastTime = timestamp;
-    let dt = (timestamp - lastTime) / 1000;
-    if (dt > 0.1) dt = 0.1;
+
+    // 1. Vergangene Zeit seit dem letzten Frame messen
+    let frameTime = (timestamp - lastTime) / 1000;
+
+    // Schutz gegen "Spiral of Death" (z.B. wenn der Tab im Hintergrund war)
+    if (frameTime > 0.1) frameTime = 0.1;
     lastTime = timestamp;
 
-    updatePhysics(dt, false);
+    // 2. Zeit in den Accumulator füllen
+    accumulator += frameTime;
+
+    // 3. Physik in festen 100 Hz Schritten (0.01s) nachziehen
+    while (accumulator >= FIXED_DT) {
+        updatePhysics(FIXED_DT, false); // Übergibt nun strikt 0.01s statt dt
+        accumulator -= FIXED_DT;
+    }
+
+    // 4. Grafik zeichnen (passiert weiterhin passend zur Bildwiederholrate)
     drawConveyorCanvas();
 
     const elPtc = document.getElementById('live_particle_count');
