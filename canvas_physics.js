@@ -6,15 +6,25 @@
  * - Gleitende Reibung/Versteifung bei v < 0.5 m/s eliminiert Ruckeln und Sprünge.
  * - Vertikales Kochen im Kasten abgefangen (p.vy > 0.02 gekappt).
  */
+/*
+ * [BREADCRUMB: 2026-08-13]
+ * DOMÄNE: Canvas Physik-Engine & Animation
+ * UPDATE: 
+ * - Umstellung auf Fixed Time Step (100 Hz) via Accumulator.
+ * - Physik ist nun vollständig von der Framerate der Grafikkarte entkoppelt.
+ */
 
 let animId;
 let lastTime = 0;
+let accumulator = 0;       // NEU: Sammelt die vergangene Zeit
+const FIXED_DT = 0.01;     // NEU: Exakt 0.01s = 100 Hz
 let beltOffset = 0;
 let particles = [];
 let isAnimating = true;
 
 const BELT_THICKNESS = 0.010;
 const currentSimRadius = 0.020;
+// ... (Rest bleibt gleich)
 
 let hoveredDim = null;
 let hitboxes = [];
