@@ -1059,13 +1059,38 @@ function drawConveyorCanvas() {
     drawTopView(ctx, scale, tx, cy_TopView, addHitRect);
 }
 
+/*
+ * [BREADCRUMB: 2026-08-14]
+ * DOMÄNE: Canvas Touch & Interaction Engine
+ * UPDATE: 
+ * - Touch-Event-Handler (touchstart, touchmove) ergänzt für mobile Maß-Auswahl.
+ * - Verhindert unabsichtliches Scrollen beim Interagieren mit Maßketten.
+ */
+function handleTouch(e) {
+    if (!e.touches || e.touches.length === 0) return;
+    const touch = e.touches[0];
+    checkHover({ clientX: touch.clientX, clientY: touch.clientY });
+    handleCanvasClick();
+}
+
 function bootPhysics() {
     try {
         const canvas = document.getElementById('conveyorCanvas');
         if (canvas) {
+            // Maus-Events
             canvas.addEventListener('mousemove', checkHover);
             canvas.addEventListener('click', handleCanvasClick);
             canvas.addEventListener('mouseout', () => { checkHover({ clientX: 0, clientY: 0 }); });
+
+            // NEU: Touch-Events für Smartphones & Tablets
+            canvas.addEventListener('touchstart', handleTouch, { passive: true });
+            canvas.addEventListener('touchmove', (e) => {
+                if (hoveredDim) {
+                    // Verhindert Page-Scroll, wenn aktiv ein Maß angefasst wird
+                    e.preventDefault();
+                }
+                handleTouch(e);
+            }, { passive: false });
         }
         initParticles();
         if (typeof updateGeometry === 'function') updateGeometry();

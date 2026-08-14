@@ -28,6 +28,50 @@ function syncSpeed(val, source = 'manual') {
     }
 }
 
+/*
+ * [BREADCRUMB: 2026-08-14]
+ * DOMÄNE: UI & Mathematik - Gurtbreiten-Kopplung nach VDI 2322
+ * UPDATE:
+ * - VDI 2322 Tabelle 2 Lookup für Streckenlast m_leer' (Normale Anlage) integriert.
+ * - onBeltWidthChange() setzt bei Wechsel von B automatisch den Norm-Default für m_leer
+ *   und skaliert die lichte Förderbreite b proportional (b = B - 0.20 m).
+ */
+
+// Richtwerte nach VDI 2322 Tabelle 2 für "Normale Anlage" (2*m'G + Sigma m'R)
+const VDI_DEFAULT_M_LEER = {
+    0.40: 16.5,
+    0.50: 21.0,
+    0.65: 25.5,
+    0.80: 35.0,
+    1.00: 52.0,
+    1.20: 77.0,
+    1.40: 89.0,
+    1.60: 130.0
+};
+
+function onBeltWidthChange() {
+    const el_B = document.getElementById('in_B');
+    const el_b = document.getElementById('in_b');
+    const el_m_leer = document.getElementById('in_m_leer');
+
+    if (!el_B) return;
+    const B_val = parseFloat(el_B.value);
+
+    // 1. Automatische Übernahme der Streckenlast der leeren Anlage (VDI 2322 Normale Anlage)
+    if (el_m_leer && VDI_DEFAULT_M_LEER[B_val] !== undefined) {
+        el_m_leer.value = VDI_DEFAULT_M_LEER[B_val].toFixed(1);
+    }
+
+    // 2. Sinnvolle Förderbreite b anpassen (Standard: b = B - 0.20 m, min 0.20 m)
+    if (el_b) {
+        let suggested_b = Math.max(0.20, B_val - 0.20);
+        el_b.value = suggested_b.toFixed(2);
+    }
+
+    // 3. Geometrie & abhängige Durchsatzwerte aktualisieren
+    updateGeometry();
+}
+
 function switchTab(tabId) {
     document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
     document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
@@ -161,6 +205,13 @@ function updateLiveConversion(source = 'other') {
  * DOMÄNE: UI & Mathematik - enforceConstraints
  * UPDATE: Bandlänge (L) auf max 5.0m und min (L_box + 0.3m) limitiert.
  */
+/*
+ * [BREADCRUMB: 2026-08-14]
+ * DOMÄNE: UI & Mathematik - enforceConstraints
+ * UPDATE:
+ * - Strenges Capping und Zero/NaN-Protection für rho, m_leer, C und eta eingefügt.
+ * - Verhindert unendliche Leistungen oder Division durch 0 bei der Berechnung.
+ */
 function enforceConstraints() {
     let alpha = document.getElementById('in_alpha');
     let h_klappe = document.getElementById('in_h_klappe');
@@ -172,7 +223,49 @@ function enforceConstraints() {
     let el_L_box = document.getElementById('in_L_box');
     let el_L = document.getElementById('in_L');
 
+    // NEU: Zusätzliche Inputs für Schüttgut- und Antriebsparameter
+    let el_rho = document.getElementById('in_rho');
+    let el_m_leer = document.getElementById('in_m_leer');
+    let el_C = document.getElementById('in_C');
+    let el_eta = document.getElementById('in_eta');
+
     if (!alpha || !h_klappe || !h_klappe_max || !el_B || !el_b) return;
+
+    // --- Schüttdichte (100 .. 5000 kg/m³) ---
+    if (el_rho && el_rho.value !== "") {
+        let val = parseFloat(el_rho.value);
+        if (!isNaN(val)) {
+            if (val < 100) el_rho.value = "100";
+            if (val > 5000) el_rho.value = "5000";
+        }
+    }
+
+    // --- Streckenlast leer (5.0 .. 150.0 kg/m) ---
+    if (el_m_leer && el_m_leer.value !== "") {
+        let val = parseFloat(el_m_leer.value);
+        if (!isNaN(val)) {
+            if (val < 5.0) el_m_leer.value = "5.0";
+            if (val > 150.0) el_m_leer.value = "150.0";
+        }
+    }
+
+    // --- Längenzuschlag Nebenwiderstände C (1.0 .. 10.0) ---
+    if (el_C && el_C.value !== "") {
+        let val = parseFloat(el_C.value);
+        if (!isNaN(val)) {
+            if (val < 1.0) el_C.value = "1.0";
+            if (val > 10.0) el_C.value = "10.0";
+        }
+    }
+
+    // --- Wirkungsgrad eta (0.30 .. 0.98) ---
+    if (el_eta && el_eta.value !== "") {
+        let val = parseFloat(el_eta.value);
+        if (!isNaN(val)) {
+            if (val < 0.30) el_eta.value = "0.30";
+            if (val > 0.98) el_eta.value = "0.98";
+        }
+    }
 
     // L_box Schranken
     if (el_L_box && el_L_box.value !== "") {
@@ -183,16 +276,25 @@ function enforceConstraints() {
         }
     }
 
-    // NEU: Achsabstand / Bandlänge (L) Schranken
+    let el_v = document.getElementById('in_v');
+    if (el_v && el_v.value !== "") {
+        let v_val = parseFloat(el_v.value);
+        if (!isNaN(v_val)) {
+            if (v_val > 0.8) el_v.value = "0.80";
+            if (v_val < 0) el_v.value = "0.00";
+        }
+    }
+
+    // Achsabstand / Bandlänge (L) Schranken
     if (el_L && el_L_box) {
         let l_val = parseFloat(el_L.value);
         let lbox_val = parseFloat(el_L_box.value);
         if (!isNaN(l_val) && !isNaN(lbox_val)) {
-            let min_L = lbox_val + 0.300; // Darf nie kürzer als Einlaufkasten + 300mm sein
+            let min_L = lbox_val + 0.300;
             if (l_val < min_L) {
                 el_L.value = min_L.toFixed(3);
             } else if (l_val > 5.000) {
-                el_L.value = "5.000"; // Max 5 Meter
+                el_L.value = "5.000";
             }
         }
     }
@@ -310,6 +412,8 @@ function closeModal(modalId) {
         modal.style.display = 'none';
     }
 }
+
+
 
 /*
  * [BREADCRUMB: 2026-08-12]
@@ -454,3 +558,4 @@ function calculate() {
     }
     switchTab('ergebnisse');
 }
+

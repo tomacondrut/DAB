@@ -17,10 +17,9 @@
             <button class="tab-btn active" onclick="switchTab('eingaben')">Eingaben & Geometrie</button>
             <button class="tab-btn" onclick="switchTab('ergebnisse')">Ergebnisse & Berechnungen</button>
         </div>
-
         <!-- Header & Datei-Operationen -->
-        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; border-bottom: 2px solid var(--border-color); padding-bottom: 15px;">
-            <div style="display: flex; flex-direction: column;">
+        <div class="header-bar">
+            <div>
                 <h2 style="margin: 0; color: #2c3e50;">
                     Auslegung DAB
                     <span style="cursor:pointer; font-size: 0.8em;" onclick="openMetaModal()" title="Projektdaten bearbeiten">📝</span>
@@ -29,39 +28,35 @@
                     Projekt: <strong id="disp-projekt">---</strong> &nbsp;|&nbsp; Ersteller: <strong id="disp-ersteller">---</strong>
                 </div>
             </div>
-            <div style="display: flex; gap: 8px;">
-                <button class="calc-btn" style="margin: 0; width: auto; background: #34495e;" onclick="document.getElementById('dabFileInput').click()">📂 Laden (.dab)</button>
-                <button class="calc-btn" style="margin: 0; width: auto; background: #34495e;" onclick="saveDAB()">💾 Speichern (.dab)</button>
-                <button class="calc-btn" id="btnExportPDF" style="margin: 0; width: auto; background: #e67e22;" onclick="generatePDF()">📄 PDF Bericht</button>
+            <div class="header-btn-group">
+                <button class="calc-btn" style="background: #34495e;" onclick="document.getElementById('dabFileInput').click()">📂 Laden (.dab)</button>
+                <button class="calc-btn" style="background: #34495e;" onclick="saveDAB()">💾 Speichern (.dab)</button>
+                <button class="calc-btn" id="btnExportPDF" style="background: #e67e22;" onclick="generatePDF()">📄 PDF Bericht</button>
                 <input type="file" id="dabFileInput" accept=".dab" style="display: none;" onchange="loadDAB(event)">
             </div>
         </div>
 
         <div id="eingaben" class="tab-content active">
 
+            <!-- KAPITEL 1: GEOMETRIE -->
             <div class="chapter-card">
                 <h3 class="chapter-title">
-                    3. Mechanik, Widerstände & Abzug
+                    1. Geometrie & Abmessungen
                     <button class="info-btn" style="float: right; width: auto; padding: 2px 10px; border-radius: 4px;" onclick="openAbzugModal()">Theorie Abzugskraft ℹ️</button>
                     <button class="info-btn" style="float: right; width: auto; padding: 2px 10px; border-radius: 4px; margin-right: 10px; background: #e67e22;" onclick="openModal('modal_sim_info')">Simulation Engine ⚙️</button>
                 </h3>
+
                 <div class="canvas-wrapper">
-                    <!-- Height auf 520 erhöht, um oben Platz für den doppelten Abstand zu schaffen -->
                     <canvas id="conveyorCanvas" width="900" height="520"></canvas>
-
-                    <!-- Nur noch Symbol, umplatziert -->
                     <button class="anim-btn" id="btnAnimToggle" onclick="toggleAnimation()" title="Animation starten/pausieren">❚❚</button>
-
                     <div class="canvas-slider-container">
                         <label>v = <span id="canvas_v_val">0.38</span> m/s</label>
-                        <!-- Im Canvas-Bereich (Slider): -->
-                        <!-- Max-Wert von 2.0 auf 0.8 anpassen -->
-                        <input type="range" id="canvas_v_slider" min="0" max="0.8" step="0.01" value="0.38" oninput="syncSpeed(this.value)">
+                        <input type="range" id="canvas_v_slider" min="0" max="0.80" step="0.01" value="0.38" oninput="syncSpeed(this.value)">
                     </div>
                 </div>
 
-                <div style="display:flex; justify-content: space-between; gap:20px;">
-                    <div style="flex: 1;">
+                <div class="two-col-grid">
+                    <div class="col">
                         <div class="input-group">
                             <label id="lbl_L">Achsabstand / Länge (\(L\))</label>
                             <input type="number" id="in_L" value="3.15" step="0.01" min="0" oninput="updateGeometry()">
@@ -69,7 +64,16 @@
                         </div>
                         <div class="input-group">
                             <label id="lbl_B">Gurtbreite (\(B\))</label>
-                            <input type="number" id="in_B" value="0.65" step="0.01" min="0" oninput="updateGeometry()">
+                            <select id="in_B" onchange="onBeltWidthChange()">
+                                <option value="0.40">400 mm</option>
+                                <option value="0.50">500 mm</option>
+                                <option value="0.65" selected>650 mm</option>
+                                <option value="0.80">800 mm</option>
+                                <option value="1.00">1000 mm</option>
+                                <option value="1.20">1200 mm</option>
+                                <option value="1.40">1400 mm</option>
+                                <option value="1.60">1600 mm</option>
+                            </select>
                             <span class="unit">m</span>
                         </div>
                         <div class="input-group">
@@ -93,7 +97,7 @@
                             <span class="unit">m</span>
                         </div>
                     </div>
-                    <div style="flex: 1;">
+                    <div class="col">
                         <div class="input-group">
                             <label id="lbl_h_silo">Silo-Füllhöhe (\(h_{Silo}\))</label>
                             <input type="number" id="in_h_silo" value="3.00" step="0.1" min="0" title="Relevant für den Bodendruck">
@@ -115,30 +119,31 @@
                             <span class="unit">m</span>
                         </div>
                         <div class="input-group" style="margin-top:10px;">
-                            <span class="live-display" id="live_H_display" style="margin-left:0;">Förderhöhe (H): 0.110 m</span>
+                            <span class="live-display" id="live_H_display" style="margin-left:0;">Förderhöhe (H): wird berechnet...</span>
                         </div>
                     </div>
                 </div>
             </div>
 
+            <!-- KAPITEL 2: MATERIAL & DURCHSATZ -->
             <div class="chapter-card">
                 <h3 class="chapter-title">2. Material & Durchsatz</h3>
-                <div style="display:flex; justify-content: space-between; gap:20px;">
-                    <div style="flex: 1;">
+                <div class="two-col-grid">
+                    <div class="col">
                         <div class="input-group">
                             <label>Fördergeschwindigkeit (\(v\))</label>
-                            <!-- Im Bereich 2. Material & Durchsatz (Input-Feld): -->
-                            <!-- in_v max von 2.0 auf 0.8 anpassen -->
-                            <input type="number" id="in_v" value="0.38" step="0.01" min="0" max="0.8" oninput="syncSpeed(this.value)">
+                            <input type="number" id="in_v" value="0.38" step="0.01" min="0" max="0.80" oninput="syncSpeed(this.value)">
                             <span class="unit">m/s</span>
                         </div>
                         <div class="input-group">
                             <label>Schüttdichte (\(\rho\))</label>
-                            <input type="number" id="in_rho" value="1600" step="10" min="0" oninput="updateLiveConversion()">
+                            <input type="number" id="in_rho" value="1600" step="10" min="100" max="5000"
+                                   oninput="if(parseFloat(this.value) > 5000) this.value = 5000; updateLiveConversion();"
+                                   onchange="if(parseFloat(this.value) < 100 || isNaN(parseFloat(this.value))) this.value = 100; updateLiveConversion();">
                             <span class="unit">kg/m³</span>
                         </div>
                     </div>
-                    <div style="flex: 1;">
+                    <div class="col">
                         <div class="toggle-group">
                             <label><input type="radio" name="flow_mode" value="geom" checked onchange="toggleFlowMode()"> Aus Abzugs-Geometrie</label>
                             <label><input type="radio" name="flow_mode" value="vol" onchange="toggleFlowMode()"> Vorgabe in m³/h</label>
@@ -146,46 +151,54 @@
                         </div>
 
                         <div id="container_geom" class="input-group">
-                            <span class="live-display" id="live_geom_display" style="margin-left:0;">Theoretischer Durchsatz: 88.92 m³/h (39.52 kg/s)</span>
+                            <span class="live-display" id="live_geom_display" style="margin-left:0;">Theoretischer Durchsatz: wird berechnet...</span>
                         </div>
                         <div id="container_vol" class="input-group" style="display:none;">
                             <label>Volumenstrom \( (I_V) \)</label>
-                            <input type="number" id="in_Iv" value="137.5" step="1" min="0" oninput="updateLiveConversion()">
+                            <input type="number" id="in_Iv" value="197.0" step="1" min="0" oninput="updateLiveConversion()">
                             <span class="unit">m³/h</span>
-                            <span class="live-display" id="live_mass_display">entspricht: 61.11 kg/s</span>
+                            <span class="live-display" id="live_mass_display">entspricht: - kg/s</span>
                         </div>
                         <div id="container_mass" class="input-group" style="display:none;">
                             <label>Massenstrom \( (I_{mN}) \)</label>
-                            <input type="number" id="in_Im" value="61.11" step="0.1" min="0" oninput="updateLiveConversion()">
+                            <input type="number" id="in_Im" value="87.55" step="0.1" min="0" oninput="updateLiveConversion()">
                             <span class="unit">kg/s</span>
-                            <span class="live-display" id="live_vol_display">entspricht: 137.5 m³/h</span>
+                            <span class="live-display" id="live_vol_display">entspricht: - m³/h</span>
                         </div>
                     </div>
                 </div>
             </div>
 
+            <!-- KAPITEL 3: MECHANIK & WIDERSTÄNDE -->
             <div class="chapter-card">
                 <h3 class="chapter-title">3. Mechanik, Widerstände & Abzug</h3>
-                <div style="display:flex; justify-content: space-between; gap:20px;">
-                    <div style="flex: 1;">
+                <div class="two-col-grid">
+                    <div class="col">
                         <div class="input-group">
                             <label>Streckenlast Anlage leer (\(m_{leer}'\))</label>
-                            <input type="number" id="in_m_leer" value="21.0" step="0.1" min="0">
+                            <input type="number" id="in_m_leer" value="25.5" step="0.1" min="5.0" max="150.0"
+                                   oninput="if(parseFloat(this.value) > 150.0) this.value = 150.0;"
+                                   onchange="if(parseFloat(this.value) < 5.0 || isNaN(parseFloat(this.value))) this.value = 5.0;">
                             <span class="unit">kg/m</span>
+                            <button class="info-btn" type="button" onclick="openModal('modal_m_leer')">i</button>
                         </div>
                         <div class="input-group">
                             <label>Längenzuschlag Nebenwiderst. (\(C\))</label>
-                            <input type="number" id="in_C" value="2.0" step="0.1" min="1">
+                            <input type="number" id="in_C" value="2.0" step="0.1" min="1.0" max="10.0"
+                                   oninput="if(parseFloat(this.value) > 10.0) this.value = 10.0;"
+                                   onchange="if(parseFloat(this.value) < 1.0 || isNaN(parseFloat(this.value))) this.value = 1.0;">
                             <span class="unit">-</span>
+                            <button class="info-btn" type="button" onclick="openModal('modal_C')">i</button>
                         </div>
                         <div class="input-group">
                             <label>Wirkungsgrad Antrieb (\(\eta\))</label>
-                            <input type="number" id="in_eta" value="0.75" step="0.01" min="0.1" max="1">
+                            <input type="number" id="in_eta" value="0.75" step="0.01" min="0.30" max="0.98"
+                                   oninput="if(parseFloat(this.value) > 0.98) this.value = 0.98;"
+                                   onchange="if(parseFloat(this.value) < 0.30 || isNaN(parseFloat(this.value))) this.value = 0.30;">
                             <span class="unit">-</span>
                         </div>
                     </div>
-                    <div style="flex: 1;">
-                        <!-- BREADCRUMB: 2026-08-12 | UI Guardrails: Reibwert-Capping & Zero-Protection -->
+                    <div class="col">
                         <div class="input-group">
                             <label>Reibwert Gurt/Material (\(\mu_G\))</label>
                             <input type="number" id="in_mu_g" value="0.60" step="0.05" min="0.30" max="1.20"
@@ -397,6 +410,137 @@
                 <input type="text" id="input-ersteller" style="width: 100%; max-width: 100%; text-transform: uppercase;" maxlength="3" placeholder="z.B. STA" oninput="this.value = this.value.toUpperCase().replace(/[^A-ZÄÖÜ]/g, '')">
             </div>
             <button class="calc-btn" style="background: #009B4C; margin-top: 25px;" onclick="saveMetaModal()">Speichern</button>
+        </div>
+    </div>
+
+    <!-- Modal: Längenzuschlag Nebenwiderstände C nach VDI 2322 / DIN 22101 -->
+    <div id="modal_C" class="modal-overlay" style="display:none;">
+        <div class="modal-content" style="max-width: 780px;">
+            <span class="modal-close" onclick="closeModal('modal_C')">&times;</span>
+            <h2 style="color: #2c3e50;">Beiwert der Nebenwiderstände (\(C\))</h2>
+            <p>Der Beiwert \(C\) berücksichtigt pauschal alle <strong>Nebenwiderstände \(F_N\)</strong> entlang des Bandförderers als Zuschlag zu den kontinuierlichen Hauptwiderständen \(F_H\):</p>
+
+            <div class="modal-formula">
+                $$ F_N = (C - 1) \cdot F_H \quad \Longrightarrow \quad F_W = C \cdot F_H + F_{\mathrm{St}} + F_{\mathrm{Abzug}} $$
+            </div>
+
+            <h3 style="color: #0056b3; margin-top: 15px;">Physikalische Bestandteile der Nebenwiderstände (\(F_N\))</h3>
+            <ul style="line-height: 1.6; font-size: 0.95em;">
+                <li><strong>Trägheits- und Beschleunigungswiderstand:</strong> Beschleunigung des Schüttguts im Aufgabebereich auf Bandgeschwindigkeit.</li>
+                <li><strong>Schurren- und Dichtleistenreibung:</strong> Reibungswiderstand zwischen Fördergut und seitlichen Führungsblechen / Schürzengummis im Einlauf- und Übergabebereich.</li>
+                <li><strong>Gurtreinigung & Abstreifer:</strong> Reibungskräfte durch Kopfabstreifer, Pflugabstreifer oder Bürstenwalzen.</li>
+                <li><strong>Umlenk- und Lagerwiderstände:</strong> Biegewiderstand des Gurtes um Trommeln sowie Reibung der Trommellagerungen.</li>
+            </ul>
+
+            <h3 style="color: #0056b3; margin-top: 15px;">Längenabhängigkeit nach VDI 2322 / DIN 22101</h3>
+            <p style="font-size: 0.9em; color: #555;">Da Nebenwiderstände punktuell an Kopf, Heck und Einlauf entstehen, sinkt ihr prozentualer Anteil mit zunehmender Achsabstandslänge \(L\):</p>
+
+            <div class="modal-table-container">
+                <table style="width: 100%; border-collapse: collapse; text-align: center; font-size: 0.9em; margin-top: 10px;">
+                    <thead>
+                        <tr style="background: #f1f3f5; border-bottom: 2px solid #dee2e6;">
+                            <th style="padding: 6px; text-align: left;">Achsabstand \(L\)</th>
+                            <th style="padding: 6px;">&lt; 5 m (DAB)</th>
+                            <th style="padding: 6px;">80 m</th>
+                            <th style="padding: 6px;">150 m</th>
+                            <th style="padding: 6px;">300 m</th>
+                            <th style="padding: 6px;">600 m</th>
+                            <th style="padding: 6px;">1000 m</th>
+                            <th style="padding: 6px;">&ge; 2000 m</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr style="border-bottom: 1px solid #eee;">
+                            <td style="padding: 6px; text-align: left; font-weight: bold; color: #0056b3;">Beiwert \(C\)</td>
+                            <td style="color: #e67e22; font-weight: bold;">2,0 &hellip; 3,5</td>
+                            <td>1,92</td>
+                            <td>1,58</td>
+                            <td>1,31</td>
+                            <td>1,17</td>
+                            <td>1,09</td>
+                            <td>1,05</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <h3 style="color: #0056b3; margin-top: 20px;">Besonderheit bei kurzen Dosierabzugsbändern (DAB)</h3>
+            <p style="font-size: 0.95em; line-height: 1.5;">
+                Bei kurzen Dosierabzugsbändern (\(L \le 5\,\text{m}\)) ist der Hauptrollwiderstand \(F_H\) bauartbedingt sehr klein. Lokale Reibungseffekte an Schürzengummi und Abstreifer fallen verhältnismäßig stark ins Gewicht, weshalb in der Praxis Werte von <strong>\(C = 2{,}0 \dots 3{,}5\)</strong> angesetzt werden.
+            </p>
+        </div>
+    </div>
+
+    <!-- Modal: Streckenlast Anlage leer nach VDI 2322 / DIN 22101 -->
+    <div id="modal_m_leer" class="modal-overlay" style="display:none;">
+        <div class="modal-content" style="max-width: 780px;">
+            <span class="modal-close" onclick="closeModal('modal_m_leer')">&times;</span>
+            <h2 style="color: #2c3e50;">Streckenlast der leeren Anlage (\(m_{\mathrm{leer}}'\))</h2>
+            <p>Die Streckenlast \(m_{\mathrm{leer}}'\) fasst die massenbezogenen Eigenlasten des umlaufenden Fördergurts sowie der rotierenden Teile der Tragrollen für Ober- und Untertrum zusammen:</p>
+
+            <div class="modal-formula">
+                $$ m_{\mathrm{leer}}' = 2 \cdot m'_G + \Sigma m'_R $$
+            </div>
+
+            <ul style="line-height: 1.6; font-size: 0.95em;">
+                <li><strong>\(m'_G\):</strong> Streckenlast des Fördergurts in \(\text{kg/m}\) (\(2 \cdot m'_G\) für Ober- und Untertrum).</li>
+                <li><strong>\(\Sigma m'_R\):</strong> Streckenlast infolge der drehenden Rollenteile im Ober- und Untertrum in \(\text{kg/m}\).</li>
+            </ul>
+
+            <h3 style="color: #0056b3; margin-top: 15px;">Richtwerte nach VDI 2322 (Tabelle 2)</h3>
+            <p style="font-size: 0.9em; color: #555;">Richtwerte für \((2 \cdot m'_G + \Sigma m'_R)\) in \(\text{kg/m}\) bei Standard-Tragrollenabständen:</p>
+
+            <div class="modal-table-container">
+                <table style="width: 100%; border-collapse: collapse; text-align: center; font-size: 0.9em; margin-top: 10px;">
+                    <thead>
+                        <tr style="background: #f1f3f5; border-bottom: 2px solid #dee2e6;">
+                            <th style="padding: 6px; text-align: left;">Gurtbreite \(B\)</th>
+                            <th style="padding: 6px;">500 mm</th>
+                            <th style="padding: 6px;">650 mm</th>
+                            <th style="padding: 6px;">800 mm</th>
+                            <th style="padding: 6px;">1000 mm</th>
+                            <th style="padding: 6px;">1200 mm</th>
+                            <th style="padding: 6px;">1400 mm</th>
+                            <th style="padding: 6px;">1600 mm</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr style="border-bottom: 1px solid #eee;">
+                            <td style="padding: 6px; text-align: left; font-weight: bold;">Leichte Anlage</td>
+                            <td>18,5</td>
+                            <td>22,5</td>
+                            <td>30,0</td>
+                            <td>37,0</td>
+                            <td>54,0</td>
+                            <td>63,0</td>
+                            <td>81,0</td>
+                        </tr>
+                        <tr style="border-bottom: 1px solid #eee; background: #fdfdfd;">
+                            <td style="padding: 6px; text-align: left; font-weight: bold; color: #0056b3;">Normale Anlage (Default)</td>
+                            <td style="color: #0056b3; font-weight: bold;">21,0</td>
+                            <td style="color: #0056b3; font-weight: bold;">25,5</td>
+                            <td style="color: #0056b3; font-weight: bold;">35,0</td>
+                            <td style="color: #0056b3; font-weight: bold;">52,0</td>
+                            <td style="color: #0056b3; font-weight: bold;">77,0</td>
+                            <td style="color: #0056b3; font-weight: bold;">89,0</td>
+                            <td style="color: #0056b3; font-weight: bold;">130,0</td>
+                        </tr>
+                        <tr style="border-bottom: 1px solid #eee;">
+                            <td style="padding: 6px; text-align: left; font-weight: bold;">Schwere Anlage</td>
+                            <td>24,0</td>
+                            <td>28,5</td>
+                            <td>40,0</td>
+                            <td>67,0</td>
+                            <td>100,0</td>
+                            <td>115,0</td>
+                            <td>179,0</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <h3 style="color: #0056b3; margin-top: 20px;">Grenzwerte & Schutzmechanismen im Tool</h3>
+            <p style="font-size: 0.95em;">Das Tool limitiert \(m_{\mathrm{leer}}'\) auf den Bereich von <strong>5,0 bis 150,0 kg/m</strong>. Dies schützt vor Fehleingaben und sichert eine verlässliche Hauptwiderstandsberechnung \(F_H\).</p>
         </div>
     </div>
 
