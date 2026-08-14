@@ -599,3 +599,90 @@ body {
         width: 95% !important;
     }
 }
+
+/* ==========================================================================
+   DESKTOP KAPITEL ACTIONS
+   ========================================================================== */
+.chapter-title {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.chapter-actions {
+    display: flex;
+    gap: 8px;
+}
+
+    .chapter-actions .info-btn {
+        width: auto !important;
+        padding: 3px 10px !important;
+        border-radius: 4px !important;
+    }
+
+    .chapter-actions .btn-engine {
+        background: #e67e22 !important;
+    }
+
+/* ==========================================================================
+   MOBILE LAYOUT (< 768px)
+   ========================================================================== */
+@media screen and (max-width: 768px) {
+    /* 1. Header-Buttons unter den Titel setzen */
+    .chapter-title {
+        flex-direction: column !important;
+        align-items: flex-start !important;
+        gap: 8px !important;
+    }
+
+    .chapter-actions {
+        width: 100% !important;
+        display: flex !important;
+        flex-wrap: wrap !important;
+    }
+
+    /* 2. Formularfeld: Label KOMPLETT oben, Controls in einer Zeile darunter */
+    .input-group {
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: flex-start !important;
+        margin-bottom: 15px !important;
+        gap: 4px !important;
+    }
+
+        .input-group label {
+            width: 100% !important;
+            min-width: 0 !important;
+            max-width: 100% !important;
+            white-space: normal !important;
+            font-size: 0.9em !important;
+            margin-bottom: 2px !important;
+            display: block !important;
+        }
+
+            /* Verhindert das Zerreißen von Formelzeichen und Klammern */
+            .input-group label mjx-container {
+                display: inline-block !important;
+            }
+
+        /* Untere Zeile (Input + Unit + Button) */
+        .input-group input[type="number"],
+        .input-group select {
+            display: inline-block !important;
+            width: 110px !important;
+            font-size: 16px !important; /* Verhindert Auto-Zoom auf iOS */
+            padding: 6px 8px !important;
+        }
+
+        .input-group span.unit {
+            display: inline-block !important;
+            margin-left: 6px !important;
+            width: auto !important;
+        }
+
+        .input-group .info-btn {
+            display: inline-flex !important;
+            margin-left: 6px !important;
+            vertical-align: middle !important;
+        }
+}

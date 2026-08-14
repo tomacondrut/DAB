@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Abzugsband Auslegung (inkl. VDI 2322)</title>
     <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="style.css?v=2">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 </head>
 <body>
@@ -40,12 +40,13 @@
         <div id="eingaben" class="tab-content active">
 
             <!-- KAPITEL 1: GEOMETRIE -->
-            <div class="chapter-card">
-                <h3 class="chapter-title">
-                    1. Geometrie & Abmessungen
-                    <button class="info-btn" style="float: right; width: auto; padding: 2px 10px; border-radius: 4px;" onclick="openAbzugModal()">Theorie Abzugskraft ℹ️</button>
-                    <button class="info-btn" style="float: right; width: auto; padding: 2px 10px; border-radius: 4px; margin-right: 10px; background: #e67e22;" onclick="openModal('modal_sim_info')">Simulation Engine ⚙️</button>
-                </h3>
+<h3 class="chapter-title">
+    <span>1. Geometrie & Abmessungen</span>
+    <div class="chapter-actions">
+        <button class="info-btn" type="button" onclick="openAbzugModal()">Theorie Abzugskraft ℹ️</button>
+        <button class="info-btn btn-engine" type="button" onclick="openModal('modal_sim_info')">Simulation Engine ⚙️</button>
+    </div>
+</h3>
 
                 <div class="canvas-wrapper">
                     <canvas id="conveyorCanvas" width="900" height="520"></canvas>
