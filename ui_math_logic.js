@@ -1,12 +1,14 @@
 /*
- * [BREADCRUMB: 2026-08-09]
  * DOMÄNE: UI & Mathematik nach VDI 2322 + Abzugskraft
- * UPDATE: 
- * - syncSpeed Funktion für den neuen Canvas Slider.
+ * UPDATE:
+ * - Strikte Kopplung an MAX_V = 0.80 m/s im gesamten Modul.
+ * - Durchsatzvorgabe (m³/h & kg/s) regelt die Bandgeschwindigkeit v dynamisch bis max 0.80 m/s nach.
+ * - Tab-Umschaltung und PDF-Export-Lifecycle bereinigt.
  */
 
-// NEU: Synchronisation von Input-Feld und Canvas-Slider
-// BREADCRUMB: [EDIT] MAX_V von 2.0 m/s auf 0.8 m/s beschränkt
+const MAX_SYSTEM_V = 0.80; // Hard-Cap: Maximale Bandgeschwindigkeit
+
+// Synchronisation von Input-Feld und Canvas-Slider
 function syncSpeed(val, source = 'manual') {
     let elIn = document.getElementById('in_v');
     let elSl = document.getElementById('canvas_v_slider');
@@ -14,7 +16,7 @@ function syncSpeed(val, source = 'manual') {
 
     let numVal = parseFloat(val);
     if (isNaN(numVal)) numVal = 0;
-    if (numVal > 0.8) numVal = 0.8; // Hard-Cap: Maximale Bandgeschwindigkeit
+    if (numVal > MAX_SYSTEM_V) numVal = MAX_SYSTEM_V;
     if (numVal < 0) numVal = 0;
 
     let strVal = numVal.toFixed(2);
@@ -27,15 +29,6 @@ function syncSpeed(val, source = 'manual') {
         updateLiveConversion('speed');
     }
 }
-
-/*
- * [BREADCRUMB: 2026-08-14]
- * DOMÄNE: UI & Mathematik - Gurtbreiten-Kopplung nach VDI 2322
- * UPDATE:
- * - VDI 2322 Tabelle 2 Lookup für Streckenlast m_leer' (Normale Anlage) integriert.
- * - onBeltWidthChange() setzt bei Wechsel von B automatisch den Norm-Default für m_leer
- *   und skaliert die lichte Förderbreite b proportional (b = B - 0.20 m).
- */
 
 // Richtwerte nach VDI 2322 Tabelle 2 für "Normale Anlage" (2*m'G + Sigma m'R)
 const VDI_DEFAULT_M_LEER = {
@@ -57,35 +50,48 @@ function onBeltWidthChange() {
     if (!el_B) return;
     const B_val = parseFloat(el_B.value);
 
-    // 1. Automatische Übernahme der Streckenlast der leeren Anlage (VDI 2322 Normale Anlage)
     if (el_m_leer && VDI_DEFAULT_M_LEER[B_val] !== undefined) {
         el_m_leer.value = VDI_DEFAULT_M_LEER[B_val].toFixed(1);
     }
 
-    // 2. Sinnvolle Förderbreite b anpassen (Standard: b = B - 0.20 m, min 0.20 m)
     if (el_b) {
         let suggested_b = Math.max(0.20, B_val - 0.20);
         el_b.value = suggested_b.toFixed(2);
     }
 
-    // 3. Geometrie & abhängige Durchsatzwerte aktualisieren
     updateGeometry();
 }
 
 function switchTab(tabId) {
-    document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
-    document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-    document.getElementById(tabId).classList.add('active');
-    if(window.event && window.event.currentTarget) {
-        window.event.currentTarget.classList.add('active');
+    document.querySelectorAll('.tab-content').forEach(tab => {
+        tab.classList.remove('active');
+        tab.style.display = 'none';
+    });
+
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.classList.remove('active');
+    });
+
+    const targetTab = document.getElementById(tabId);
+    if (targetTab) {
+        targetTab.classList.add('active');
+        targetTab.style.display = 'block';
+    }
+
+    const targetBtn = document.getElementById(`tab_btn_${tabId}`);
+    if (targetBtn) {
+        targetBtn.classList.add('active');
     } else {
-        document.querySelector(`button[onclick="switchTab('${tabId}')"]`).classList.add('active');
+        const fallbackBtn = document.querySelector(`button[onclick*="'${tabId}'"]`);
+        if (fallbackBtn) fallbackBtn.classList.add('active');
     }
 }
 
 function toggleInfo(infoId) {
     const box = document.getElementById(infoId);
-    box.style.display = box.style.display === 'block' ? 'none' : 'block';
+    if (box) {
+        box.style.display = box.style.display === 'block' ? 'none' : 'block';
+    }
 }
 
 function toggleFlowMode() {
@@ -93,13 +99,17 @@ function toggleFlowMode() {
     if (!modeEl) return;
     const mode = modeEl.value;
 
-    document.getElementById('container_geom').style.display = 'none';
-    document.getElementById('container_vol').style.display = 'none';
-    document.getElementById('container_mass').style.display = 'none';
+    const cGeom = document.getElementById('container_geom');
+    const cVol = document.getElementById('container_vol');
+    const cMass = document.getElementById('container_mass');
 
-    if (mode === 'geom') document.getElementById('container_geom').style.display = 'block';
-    if (mode === 'vol') document.getElementById('container_vol').style.display = 'flex';
-    if (mode === 'mass') document.getElementById('container_mass').style.display = 'flex';
+    if (cGeom) cGeom.style.display = 'none';
+    if (cVol) cVol.style.display = 'none';
+    if (cMass) cMass.style.display = 'none';
+
+    if (mode === 'geom' && cGeom) cGeom.style.display = 'block';
+    if (mode === 'vol' && cVol) cVol.style.display = 'flex';
+    if (mode === 'mass' && cMass) cMass.style.display = 'flex';
 
     updateLiveConversion('toggle');
 }
@@ -119,99 +129,78 @@ function updateLiveConversion(source = 'other') {
     const h_K = parseFloat(elHk.value) || 0;
     const mode = elMode.value;
 
-    const MAX_V = 2.0; // Deckelung der Geschwindigkeit auf das physikalische Limit
+    // Maximale Durchsätze bei gegebener Geometrie und v_max = 0.80 m/s
+    const max_Iv_limit = b * h_K * MAX_SYSTEM_V * 3600;
+    const max_Im_limit = (max_Iv_limit * rho) / 3600;
+
+    let elIv = document.getElementById('in_Iv');
+    let elIm = document.getElementById('in_Im');
 
     if (mode === 'geom') {
-        // Geschwindigkeit diktiert den Flow
         const Iv = b * h_K * v * 3600;
         const Im = (Iv * rho) / 3600;
-        document.getElementById('live_geom_display').innerText = `Theoretischer Durchsatz: ${Iv.toFixed(2)} m³/h (${Im.toFixed(2)} kg/s)`;
+        const elGeom = document.getElementById('live_geom_display');
+        if (elGeom) {
+            elGeom.innerText = `Theoretischer Durchsatz: ${Iv.toFixed(2)} m³/h (${Im.toFixed(2)} kg/s)`;
+        }
 
-        // Werte für die Eingabefelder im Hintergrund vorbereiten, für nahtlose Übergänge
-        if (source === 'speed' || source === 'toggle' || source === 'other') {
-            let elIv = document.getElementById('in_Iv');
-            let elIm = document.getElementById('in_Im');
+        if (source === 'speed' || source === 'toggle' || source === 'other' || source === 'init') {
             if (elIv) elIv.value = Iv.toFixed(1);
             if (elIm) elIm.value = Im.toFixed(2);
         }
 
     } else if (mode === 'vol') {
-        let elIv = document.getElementById('in_Iv');
         let Iv = parseFloat(elIv.value) || 0;
 
         if (source === 'speed') {
-            // Slider wurde manuell bewegt -> Volumenstrom anpassen
             Iv = b * h_K * v * 3600;
+            if (Iv > max_Iv_limit) Iv = max_Iv_limit;
             elIv.value = Iv.toFixed(1);
         } else {
-            // Flow diktiert die Geschwindigkeit
+            // Volumenstrom diktiert Geschwindigkeit
             let required_v = (b > 0 && h_K > 0) ? Iv / (b * h_K * 3600) : 0;
 
-            // Flow-Cap: Geschwindigkeit ist zu hoch für die Anlage
-            if (required_v > MAX_V) {
-                required_v = MAX_V;
-                Iv = b * h_K * MAX_V * 3600; // Zurückrechnen auf maximal möglichen Flow
+            if (required_v > MAX_SYSTEM_V) {
+                required_v = MAX_SYSTEM_V;
+                Iv = max_Iv_limit;
                 elIv.value = Iv.toFixed(1);
             }
             syncSpeed(required_v, 'auto');
         }
 
         const Im = (Iv * rho) / 3600;
-        document.getElementById('live_mass_display').innerText = `entspricht: ${Im.toFixed(2)} kg/s`;
+        const elMassDisp = document.getElementById('live_mass_display');
+        if (elMassDisp) {
+            elMassDisp.innerText = `entspricht: ${Im.toFixed(2)} kg/s`;
+        }
 
     } else if (mode === 'mass') {
-        let elIm = document.getElementById('in_Im');
         let Im = parseFloat(elIm.value) || 0;
 
         if (source === 'speed') {
-            // Slider wurde manuell bewegt -> Massenstrom anpassen
             Im = b * h_K * v * rho;
+            if (Im > max_Im_limit) Im = max_Im_limit;
             elIm.value = Im.toFixed(2);
         } else {
-            // Flow diktiert die Geschwindigkeit
+            // Massenstrom diktiert Geschwindigkeit
             let required_v = (b > 0 && h_K > 0 && rho > 0) ? Im / (b * h_K * rho) : 0;
 
-            // Flow-Cap: Geschwindigkeit ist zu hoch für die Anlage
-            if (required_v > MAX_V) {
-                required_v = MAX_V;
-                Im = b * h_K * MAX_V * rho; // Zurückrechnen auf maximal möglichen Flow
+            if (required_v > MAX_SYSTEM_V) {
+                required_v = MAX_SYSTEM_V;
+                Im = max_Im_limit;
                 elIm.value = Im.toFixed(2);
             }
             syncSpeed(required_v, 'auto');
         }
 
         const Iv = rho > 0 ? (Im * 3600) / rho : 0;
-        document.getElementById('live_vol_display').innerText = `entspricht: ${Iv.toFixed(2)} m³/h`;
+        const elVolDisp = document.getElementById('live_vol_display');
+        if (elVolDisp) {
+            elVolDisp.innerText = `entspricht: ${Iv.toFixed(2)} m³/h`;
+        }
     }
 }
 
-/*
- * [BREADCRUMB: 2026-08-10]
- * DOMÄNE: UI & Mathematik - enforceConstraints
- * UPDATE: 
- * - L_box Begrenzung auf Min: 0.30 m / Max: 1.00 m angepasst.
- * - Bei Verringerung von L_box wird die Physik-Engine neu initialisiert (bootPhysics/initParticles),
- *   um Einklemmungen/Abstürze durch schrumpfendes Volumen zu verhindern.
- */
-/*
- * [BREADCRUMB: 2026-08-10]
- * DOMÄNE: UI & Mathematik - Absturzsichere L_box Validierung
- * UPDATE: 
- * - Keine automatischen Physik-Resets mehr bei Tastatureingabe (behebt Absturz).
- * - L_box sauber zwischen 0.30m und 1.00m eingegrenzt.
- * - resetBoxParticles() löscht nur überstehende Partikel sanft aus dem Speicher.
- */
-/*
- * DOMÄNE: UI & Mathematik - enforceConstraints
- * UPDATE: Bandlänge (L) auf max 5.0m und min (L_box + 0.3m) limitiert.
- */
-/*
- * [BREADCRUMB: 2026-08-14]
- * DOMÄNE: UI & Mathematik - enforceConstraints
- * UPDATE:
- * - Strenges Capping und Zero/NaN-Protection für rho, m_leer, C und eta eingefügt.
- * - Verhindert unendliche Leistungen oder Division durch 0 bei der Berechnung.
- */
 function enforceConstraints() {
     let alpha = document.getElementById('in_alpha');
     let h_klappe = document.getElementById('in_h_klappe');
@@ -223,7 +212,6 @@ function enforceConstraints() {
     let el_L_box = document.getElementById('in_L_box');
     let el_L = document.getElementById('in_L');
 
-    // NEU: Zusätzliche Inputs für Schüttgut- und Antriebsparameter
     let el_rho = document.getElementById('in_rho');
     let el_m_leer = document.getElementById('in_m_leer');
     let el_C = document.getElementById('in_C');
@@ -231,7 +219,6 @@ function enforceConstraints() {
 
     if (!alpha || !h_klappe || !h_klappe_max || !el_B || !el_b) return;
 
-    // --- Schüttdichte (100 .. 5000 kg/m³) ---
     if (el_rho && el_rho.value !== "") {
         let val = parseFloat(el_rho.value);
         if (!isNaN(val)) {
@@ -240,7 +227,6 @@ function enforceConstraints() {
         }
     }
 
-    // --- Streckenlast leer (5.0 .. 150.0 kg/m) ---
     if (el_m_leer && el_m_leer.value !== "") {
         let val = parseFloat(el_m_leer.value);
         if (!isNaN(val)) {
@@ -249,7 +235,6 @@ function enforceConstraints() {
         }
     }
 
-    // --- Längenzuschlag Nebenwiderstände C (1.0 .. 10.0) ---
     if (el_C && el_C.value !== "") {
         let val = parseFloat(el_C.value);
         if (!isNaN(val)) {
@@ -258,7 +243,6 @@ function enforceConstraints() {
         }
     }
 
-    // --- Wirkungsgrad eta (0.30 .. 0.98) ---
     if (el_eta && el_eta.value !== "") {
         let val = parseFloat(el_eta.value);
         if (!isNaN(val)) {
@@ -267,7 +251,6 @@ function enforceConstraints() {
         }
     }
 
-    // L_box Schranken
     if (el_L_box && el_L_box.value !== "") {
         let lbox_val = parseFloat(el_L_box.value);
         if (!isNaN(lbox_val)) {
@@ -280,12 +263,11 @@ function enforceConstraints() {
     if (el_v && el_v.value !== "") {
         let v_val = parseFloat(el_v.value);
         if (!isNaN(v_val)) {
-            if (v_val > 0.8) el_v.value = "0.80";
+            if (v_val > MAX_SYSTEM_V) el_v.value = MAX_SYSTEM_V.toFixed(2);
             if (v_val < 0) el_v.value = "0.00";
         }
     }
 
-    // Achsabstand / Bandlänge (L) Schranken
     if (el_L && el_L_box) {
         let l_val = parseFloat(el_L.value);
         let lbox_val = parseFloat(el_L_box.value);
@@ -299,7 +281,6 @@ function enforceConstraints() {
         }
     }
 
-    // Limits nach Vorgabe
     let alpha_val = parseFloat(alpha.value);
     if (alpha_val < 0) alpha.value = 0;
     if (alpha_val > 10) alpha.value = 10;
@@ -334,12 +315,10 @@ function enforceConstraints() {
     if (b_val > B_val - 0.10) { b_val = B_val - 0.10; el_b.value = b_val.toFixed(2); }
 }
 
-// Wurde L_box geändert, werden gefangene Partikel sanft entfernt, anstatt die Engine zu killen
 function resetBoxParticles() {
     enforceConstraints();
     const L_box = parseFloat(document.getElementById('in_L_box').value) || 0.55;
 
-    // Entfernt Partikel, die durch das Verkleinern außerhalb des Kastens einklemmten
     if (typeof particles !== 'undefined' && Array.isArray(particles)) {
         particles = particles.filter(p => !(p.state === 'box' && p.x > L_box && p.x < L_box + 0.15));
     }
@@ -354,7 +333,7 @@ function updateGeometry() {
         const alpha_deg = parseFloat(document.getElementById('in_alpha').value) || 0;
         const DU = parseFloat(document.getElementById('in_DU').value) || 0.1;
         const DA = parseFloat(document.getElementById('in_DA').value) || 0.1;
-        
+
         const alpha_rad = alpha_deg * Math.PI / 180;
         const rU = Math.abs(DU / 2);
         const rA = Math.abs(DA / 2);
@@ -372,14 +351,14 @@ function updateGeometry() {
         }
 
         const elHDisp = document.getElementById('live_H_display');
-        if(elHDisp) elHDisp.innerText = `Förderhöhe (H): ${currentH.toFixed(3)} m`;
-        
+        if (elHDisp) elHDisp.innerText = `Förderhöhe (H): ${currentH.toFixed(3)} m`;
+
         updateLiveConversion();
-        
-        if(typeof isAnimating !== 'undefined' && !isAnimating && typeof drawConveyorCanvas === 'function') {
+
+        if (typeof isAnimating !== 'undefined' && !isAnimating && typeof drawConveyorCanvas === 'function') {
             drawConveyorCanvas();
         }
-    } catch(e) {
+    } catch (e) {
         console.warn("Fehler in updateGeometry:", e);
     }
 }
@@ -388,14 +367,12 @@ function openAbzugModal() {
     const modal = document.getElementById('modal_abzug');
     if (modal) {
         modal.style.display = 'flex';
-        // Zwingt MathJax dazu, die Formeln im Modal neu zu rendern, sobald es geöffnet wird
         if (window.MathJax) {
             MathJax.typesetPromise([modal]).catch((err) => console.log('MathJax Modal Fehler:', err));
         }
     }
 }
 
-/* BREADCRUMB: 2026-08-10 | UI: Universelle Modal-Steuerung für Info-Overlays */
 function openModal(modalId) {
     const modal = document.getElementById(modalId);
     if (modal) {
@@ -413,16 +390,7 @@ function closeModal(modalId) {
     }
 }
 
-
-
-/*
- * [BREADCRUMB: 2026-08-12]
- * DOMÄNE: UI & Mathematik - calculate
- * UPDATE:
- * - getSafeVal für sicheren Parametereinzug integriert (Zero-Protection & Min-Limit 0.30 für mu_i).
- * - Doppelte Deklarationen und undefinierte raw_*-Variablen bereinigt.
- */
-function calculate() {
+function calculate(switchTabAfterCalc = true) {
     enforceConstraints();
     const rho = parseFloat(document.getElementById('in_rho').value) || 0;
     const v = parseFloat(document.getElementById('in_v').value) || 0;
@@ -433,18 +401,11 @@ function calculate() {
     const H = currentH;
     const m_leer = parseFloat(document.getElementById('in_m_leer').value) || 0;
     const eta = parseFloat(document.getElementById('in_eta').value) || 1;
-    const C = parseFloat(document.getElementById('in_C').value) || 4.0;
+    const C = parseFloat(document.getElementById('in_C').value) || 2.0;
 
     const h_silo = parseFloat(document.getElementById('in_h_silo').value) || 0;
     const L_box = parseFloat(document.getElementById('in_L_box').value) || 0;
 
-    // --- Sicherer Parametereinzug VOR der Berechnung ---
-    /*
-     * [BREADCRUMB: 2026-08-12]
-     * DOMÄNE: Parameter Guardrails - Friction Coefficients Safe Extractor
-     * UPDATE: 
-     * - mu_g und mu_i einheitlich auf das Praxis-Intervall [0.30, 1.20] bzw. [0.30, 1.00] eingegrenzt.
-     */
     const getSafeFriction = () => {
         const parseClamp = (id, fallback, minVal, maxVal) => {
             const el = document.getElementById(id);
@@ -510,7 +471,6 @@ function calculate() {
     const PM = PW / eta;
     const PM_kW = PM / 1000;
 
-    // --- HILFSFUNKTIONEN FÜR KILONEWTON AUTOMATIK ---
     const fUI = (val) => val >= 1000 ? (val / 1000).toFixed(2) + " kN" : val.toFixed(2) + " N";
     const fTex = (val) => val >= 1000 ? (val / 1000).toFixed(2) + " \\text{ kN}" : val.toFixed(2) + " \\text{ N}";
 
@@ -542,7 +502,6 @@ function calculate() {
     document.getElementById('info_PW').innerHTML = html_PW;
     document.getElementById('info_PM').innerHTML = html_PM;
 
-    // Speichern für den PDF-Export
     window.lastCalculatedMath = {
         info_mL: latex_mL,
         info_FAbz: html_FAbz,
@@ -556,6 +515,24 @@ function calculate() {
     if (window.MathJax) {
         MathJax.typesetPromise().catch((err) => console.log('MathJax Fehler: ', err));
     }
-    switchTab('ergebnisse');
+
+    if (switchTabAfterCalc) {
+        switchTab('ergebnisse');
+    }
 }
 
+function initApp() {
+    enforceConstraints();
+    const startV = parseFloat(document.getElementById('in_v')?.value) || 0.38;
+    syncSpeed(startV, 'init');
+    updateGeometry();
+    updateLiveConversion('init');
+    calculate(false);
+}
+
+if (document.readyState === 'complete' || document.readyState === 'interactive') {
+    setTimeout(initApp, 60);
+} else {
+    window.addEventListener('DOMContentLoaded', initApp);
+    window.addEventListener('load', initApp);
+}

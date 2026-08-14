@@ -11,11 +11,9 @@
 <body>
 
     <div class="tool-container">
-        <!-- VORHER WAR HIER EIN DOPPELTES <h2> -->
-
         <div class="tab-buttons">
-            <button class="tab-btn active" onclick="switchTab('eingaben')">Eingaben & Geometrie</button>
-            <button class="tab-btn" onclick="switchTab('ergebnisse')">Ergebnisse & Berechnungen</button>
+            <button class="tab-btn active" id="tab_btn_eingaben" onclick="switchTab('eingaben')">Eingaben & Geometrie</button>
+            <button class="tab-btn" id="tab_btn_ergebnisse" onclick="switchTab('ergebnisse')">Berechnungen & Ergebnisse</button>
         </div>
 
         <!-- Header & Datei-Operationen -->
@@ -40,13 +38,14 @@
         <div id="eingaben" class="tab-content active">
 
             <!-- KAPITEL 1: GEOMETRIE -->
-<h3 class="chapter-title">
-    <span>1. Geometrie & Abmessungen</span>
-    <div class="chapter-actions">
-        <button class="info-btn" type="button" onclick="openAbzugModal()">Theorie Abzugskraft ℹ️</button>
-        <button class="info-btn btn-engine" type="button" onclick="openModal('modal_sim_info')">Simulation Engine ⚙️</button>
-    </div>
-</h3>
+            <div class="chapter-card">
+                <h3 class="chapter-title">
+                    <span>1. Geometrie & Abmessungen</span>
+                    <div class="chapter-actions">
+                        <button class="info-btn" type="button" onclick="openAbzugModal()">Theorie Abzugskraft ℹ️</button>
+                        <button class="info-btn btn-engine" type="button" onclick="openModal('modal_sim_info')">Simulation Engine ⚙️</button>
+                    </div>
+                </h3>
 
                 <div class="canvas-wrapper">
                     <canvas id="conveyorCanvas" width="900" height="520"></canvas>
@@ -176,7 +175,6 @@
                 <h3 class="chapter-title">3. Mechanik, Widerstände & Abzug</h3>
                 <div class="two-col-grid">
                     <div class="col">
-                        <!-- BREADCRUMB: 2026-08-14 | UI Layout-Fix: MathJax Klammer korrigiert & Grid-Alignment harmonisiert -->
                         <div class="input-group">
                             <label>Streckenlast Anlage leer (\(m_{leer}'\))</label>
                             <input type="number" id="in_m_leer" value="25.5" step="0.1" min="5.0" max="150.0"
@@ -185,7 +183,6 @@
                             <span class="unit">kg/m</span>
                             <button class="info-btn" type="button" onclick="openModal('modal_m_leer')">i</button>
                         </div>
-
                         <div class="input-group">
                             <label>Längenzuschlag Nebenwiderst. (\(C\))</label>
                             <input type="number" id="in_C" value="2.0" step="0.1" min="1.0" max="10.0"
@@ -194,14 +191,12 @@
                             <span class="unit">-</span>
                             <button class="info-btn" type="button" onclick="openModal('modal_C')">i</button>
                         </div>
-
                         <div class="input-group">
                             <label>Wirkungsgrad Antrieb (\(\eta\))</label>
                             <input type="number" id="in_eta" value="0.75" step="0.01" min="0.30" max="0.98"
                                    oninput="if(parseFloat(this.value) > 0.98) this.value = 0.98;"
                                    onchange="if(parseFloat(this.value) < 0.30 || isNaN(parseFloat(this.value))) this.value = 0.30;">
                             <span class="unit">-</span>
-                            <!-- Unsichtbarer Platzhalter für exakte Ausrichtung der Eingabefelder -->
                             <button class="info-btn" type="button" style="visibility: hidden;" tabindex="-1">i</button>
                         </div>
                     </div>
@@ -243,17 +238,14 @@
         </div>
     </div>
 
-
-    <!-- Modal: Simulation Engine Info -->
+    <!-- Modals -->
     <div id="modal_sim_info" class="modal-overlay" style="display:none;">
         <div class="modal-content" style="max-width: 820px;">
             <span class="modal-close" onclick="closeModal('modal_sim_info')">&times;</span>
             <h2 style="color: #2c3e50;">⚙️ Physikalische Grundlagen der Partikelsimulation (PBD / DEM)</h2>
-
             <div style="background: #eafaf1; border-left: 4px solid #009B4C; padding: 12px; margin-bottom: 20px; border-radius: 4px; font-weight: bold; font-family: monospace; font-size: 1.05em; color: #2c3e50;">
                 Simulierte Partikelanzahl (Aktiver Speicher): <span id="live_particle_count" style="color: #009B4C; font-size: 1.2em;">0</span>
             </div>
-
             <h3 style="color: #0056b3;">1. Kinematische Zeitintegration & Frame-Frequenz</h3>
             <p>Die Trajektorie der Partikel wird über einen expliziten <em>Position-Based Dynamics</em> (PBD) Integrator gelöst. Die Zeitdiskretisierung erfolgt synchron zur Bildwiederholrate der Grafikkarte über <code>requestAnimationFrame</code>:</p>
             <ul>
@@ -318,41 +310,26 @@
         </div>
     </div>
 
-    <!-- NEU: Das Modal / Die Infoseite für die Abzugskraft -->
     <div id="modal_abzug" class="modal-overlay" style="display:none;">
         <div class="modal-content">
-            <span class="modal-close" onclick="document.getElementById('modal_abzug').style.display='none'">&times;</span>
+            <span class="modal-close" onclick="closeModal('modal_abzug')">&times;</span>
             <h2>Theorie: Berechnung der Abzugskraft</h2>
             <p class="modal-note"><strong>Hinweis zur VDI 2322:</strong> In Abschnitt 4 ("Allgemeines") der VDI 2322 (2017) wird explizit darauf hingewiesen: <em>"Abzugsförderer werden in dieser Richtlinie nicht behandelt."</em> Die hier angewandte Berechnung basiert daher auf den Prinzipien der klassischen Schüttgutmechanik.</p>
-
-            <!-- BREADCRUMB: 2026-08-10 | UI Fix: Inline-MathJax Syntax in Modal-Überschriften -->
             <h3>1. Bodendruck der Materialsäule (\(F_{Boden}\))</h3>
             <p>Das Gewicht des Schüttguts im Silo bzw. Einlaufkasten drückt vertikal auf den Fördergurt. Unter der vereinfachten Annahme eines hydrostatischen Drucks (ohne Silo-Wandreibungseffekte nach Janssen) berechnet sich die Normalkraft aus:</p>
-            <div class="modal-formula">
-                $$ F_{Boden} = \rho \cdot g \cdot h_{Silo} \cdot L_{box} \cdot b $$
-            </div>
-
+            <div class="modal-formula">$$ F_{Boden} = \rho \cdot g \cdot h_{Silo} \cdot L_{box} \cdot b $$</div>
             <h3>2. Gurt-Bodenreibung (\(F_{Reibung}\))</h3>
             <p>Um das Material unter der ruhenden Säule wegzuziehen, muss die Haft-/Gleitreibung zwischen dem Schüttgut und dem Gurtmaterial überwunden werden:</p>
-            <div class="modal-formula">
-                $$ F_{Reibung} = F_{Boden} \cdot \mu_G $$
-            </div>
-
+            <div class="modal-formula">$$ F_{Reibung} = F_{Boden} \cdot \mu_G $$</div>
             <h3>3. Innerer Scherwiderstand am Schieber (\(F_{Scherung}\))</h3>
             <p>Am Auslassschieber muss das ablaufende Materialbett von der ruhenden Materialsäule im Kasten abgeschert werden. Hier wirkt die innere Reibung des Schüttguts auf der Querschnittsfläche des Schieberspannungsfeldes:</p>
-            <div class="modal-formula">
-                $$ F_{Scherung} = (\rho \cdot g \cdot h_{Silo}) \cdot (b \cdot h_{Klappe}) \cdot \mu_i $$
-            </div>
-
+            <div class="modal-formula">$$ F_{Scherung} = (\rho \cdot g \cdot h_{Silo}) \cdot (b \cdot h_{Klappe}) \cdot \mu_i $$</div>
             <h3>Gesamte zusätzliche Abzugskraft (\(F_{Abzug}\))</h3>
             <p>Die gesamte Widerstandskraft, die zusätzlich zu den regulären Förderwiderständen vom Antrieb überwunden werden muss, ist die Summe aus Gurtreibung und Scherkraft:</p>
-            <div class="modal-formula">
-                $$ F_{Abzug} = F_{Reibung} + F_{Scherung} $$
-            </div>
+            <div class="modal-formula">$$ F_{Abzug} = F_{Reibung} + F_{Scherung} $$</div>
         </div>
     </div>
 
-    <!-- Modal 1: Reibwert Gurt/Material -->
     <div id="modal_mu_g" class="modal-overlay" style="display:none;">
         <div class="modal-content">
             <span class="modal-close" onclick="closeModal('modal_mu_g')">&times;</span>
@@ -377,7 +354,6 @@
         </div>
     </div>
 
-    <!-- Modal 2: Innere Reibung Material -->
     <div id="modal_mu_i" class="modal-overlay" style="display:none;">
         <div class="modal-content">
             <span class="modal-close" onclick="closeModal('modal_mu_i')">&times;</span>
@@ -401,26 +377,6 @@
         </div>
     </div>
 
-
-
-    <!-- Meta Data Modal -->
-    <div id="metaModal" class="modal-overlay" style="display:none;">
-        <div class="modal-content" style="max-width: 450px;">
-            <span class="modal-close" onclick="closeMetaModal()">&times;</span>
-            <h2 style="color: #2c3e50;">📝 Projektdaten</h2>
-            <div class="input-group" style="flex-direction: column; align-items: flex-start;">
-                <label style="margin-bottom: 5px; width: 100%;">Projektname / Objekt-Nr.</label>
-                <input type="text" id="input-projekt" style="width: 100%; max-width: 100%; text-transform: uppercase;" placeholder="z.B. KVA-CHNIE-TSLOG">
-            </div>
-            <div class="input-group" style="flex-direction: column; align-items: flex-start; margin-top: 15px;">
-                <label style="margin-bottom: 5px; width: 100%;">Ersteller (Kürzel)</label>
-                <input type="text" id="input-ersteller" style="width: 100%; max-width: 100%; text-transform: uppercase;" maxlength="3" placeholder="z.B. STA" oninput="this.value = this.value.toUpperCase().replace(/[^A-ZÄÖÜ]/g, '')">
-            </div>
-            <button class="calc-btn" style="background: #009B4C; margin-top: 25px;" onclick="saveMetaModal()">Speichern</button>
-        </div>
-    </div>
-
-    <!-- Modal: Längenzuschlag Nebenwiderstände C nach VDI 2322 / DIN 22101 -->
     <div id="modal_C" class="modal-overlay" style="display:none;">
         <div class="modal-content" style="max-width: 780px;">
             <span class="modal-close" onclick="closeModal('modal_C')">&times;</span>
@@ -478,7 +434,6 @@
         </div>
     </div>
 
-    <!-- Modal: Streckenlast Anlage leer nach VDI 2322 / DIN 22101 -->
     <div id="modal_m_leer" class="modal-overlay" style="display:none;">
         <div class="modal-content" style="max-width: 780px;">
             <span class="modal-close" onclick="closeModal('modal_m_leer')">&times;</span>
@@ -551,8 +506,22 @@
         </div>
     </div>
 
-    <!-- WICHTIG: Die 4 JS Dateien laden (html2pdf ist für den Report) -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <div id="metaModal" class="modal-overlay" style="display:none;">
+        <div class="modal-content" style="max-width: 450px;">
+            <span class="modal-close" onclick="closeMetaModal()">&times;</span>
+            <h2 style="color: #2c3e50;">📝 Projektdaten</h2>
+            <div class="input-group" style="flex-direction: column; align-items: flex-start;">
+                <label style="margin-bottom: 5px; width: 100%;">Projektname / Objekt-Nr.</label>
+                <input type="text" id="input-projekt" style="width: 100%; max-width: 100%; text-transform: uppercase;" placeholder="z.B. KVA-CHNIE-TSLOG">
+            </div>
+            <div class="input-group" style="flex-direction: column; align-items: flex-start; margin-top: 15px;">
+                <label style="margin-bottom: 5px; width: 100%;">Ersteller (Kürzel)</label>
+                <input type="text" id="input-ersteller" style="width: 100%; max-width: 100%; text-transform: uppercase;" maxlength="3" placeholder="z.B. STA" oninput="this.value = this.value.toUpperCase().replace(/[^A-ZÄÖÜ]/g, '')">
+            </div>
+            <button class="calc-btn" style="background: #009B4C; margin-top: 25px;" onclick="saveMetaModal()">Speichern</button>
+        </div>
+    </div>
+
     <script src="config_manager.js"></script>
     <script src="pdf_export.js"></script>
     <script src="ui_math_logic.js"></script>

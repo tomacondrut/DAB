@@ -1,30 +1,21 @@
 /*
- * [BREADCRUMB: 2026-08-13]
  * DOMÄNE: Canvas Physik-Engine & Animation
  * UPDATE: 
- * - Sanfter Spawner-Fallimpuls (-0.1 statt -0.5) verhindert Schockwellen bei langsamer Fahrt.
- * - Gleitende Reibung/Versteifung bei v < 0.5 m/s eliminiert Ruckeln und Sprünge.
- * - Vertikales Kochen im Kasten abgefangen (p.vy > 0.02 gekappt).
- */
-/*
- * [BREADCRUMB: 2026-08-13]
- * DOMÄNE: Canvas Physik-Engine & Animation
- * UPDATE: 
- * - Umstellung auf Fixed Time Step (100 Hz) via Accumulator.
- * - Physik ist nun vollständig von der Framerate der Grafikkarte entkoppelt.
+ * - Fixed Time Step (100 Hz) via Accumulator.
+ * - Dynamische Gesamthöhenskalierung für beliebige Gurtbreiten.
+ * - Draufsicht und Seitenansicht dynamisch voneinander entkoppelt.
  */
 
 let animId;
 let lastTime = 0;
-let accumulator = 0;       // NEU: Sammelt die vergangene Zeit
-const FIXED_DT = 0.01;     // NEU: Exakt 0.01s = 100 Hz
+let accumulator = 0;
+const FIXED_DT = 0.01;
 let beltOffset = 0;
 let particles = [];
 let isAnimating = true;
 
 const BELT_THICKNESS = 0.010;
 const currentSimRadius = 0.020;
-// ... (Rest bleibt gleich)
 
 let hoveredDim = null;
 let hitboxes = [];
@@ -66,7 +57,7 @@ function toggleAnimation() {
     if (isAnimating) {
         btn.innerText = "❚❚";
         lastTime = performance.now();
-        accumulator = 0; // WICHTIG: Zeitspeicher zurücksetzen
+        accumulator = 0;
         animId = requestAnimationFrame(renderLoop);
     } else {
         btn.innerText = "▶";
@@ -128,11 +119,7 @@ function initParticles() {
     const rU_outer = Math.abs(DU / 2) + BELT_THICKNESS;
     const U_top_y = rU_outer * Math.cos(alpha);
 
-    // ENTKOPPLUNG: Physikalische Höhe fest bei max. 0.45m deckeln. 
-    // Schützt den Solver, während die Grafik (boxHeight) weiter wachsen darf.
-    const physicsBoxHeight = h_klappe_max + 0.45;
-
-    // Raster-Spawnen im Einlaufkasten
+    const physicsBoxHeight = h_klappe_max + 0.10;
 
     const colWidth = currentSimRadius * 1.5;
     const numCols = Math.floor((L_box - 0.04) / colWidth);
@@ -153,15 +140,6 @@ function initParticles() {
 
     for (let k = 0; k < 60; k++) updatePhysics(FIXED_DT, true);
 }
-/*
- * [BREADCRUMB: 2026-08-13]
- * DOMÄNE: Canvas Physik-Engine & Animation (Render Loop)
- * UPDATE: 
- * - Ziel: 100 Hz Fixed Time Step (FIXED_DT = 0.01) erzwingen.
- * - Verworfen: Der 60 Hz Fallback (0.01666) wurde verworfen, da 100 Hz gewünscht ist.
- * - Lösung: Spiral of Death Schutz mit Max 4 Steps & Panic-Drop hinzugefügt, um CPU-Überlastung auf mobilen Geräten abzufangen, ohne die 100 Hz Zielrate aufzugeben.
- */
-
 
 function renderLoop(timestamp) {
     if (!isAnimating) return;
@@ -169,14 +147,11 @@ function renderLoop(timestamp) {
 
     let frameTime = (timestamp - lastTime) / 1000;
 
-    // Schutz gegen extreme Lags bei Tab-Wechsel
     if (frameTime > 0.1) frameTime = 0.1;
     lastTime = timestamp;
 
     accumulator += frameTime;
 
-    // Escape Hatch: Erlaubt maximal 4 Physik-Schritte pro Bild.
-    // Bei einem 60fps Display benötigt 100Hz im Schnitt 1,6 Schritte. 4 gibt genug Puffer.
     let simulatedSteps = 0;
     const MAX_STEPS = 4;
 
@@ -186,8 +161,6 @@ function renderLoop(timestamp) {
         simulatedSteps++;
     }
 
-    // PANIK-DROP: Verhindert die Todesspirale auf langsamen Handys
-    // Überschüssige Zeit wird abgeworfen, um ein extremes Aufschaukeln zu stoppen.
     if (accumulator >= FIXED_DT) {
         accumulator = accumulator % FIXED_DT;
     }
@@ -245,8 +218,7 @@ function updatePhysics(dt, isWarmup = false) {
         window.lastGeomU = U_top_y;
     }
 
-    // ENTKOPPLUNG: Spawner-Zielhöhe ebenfalls bei 0.45m deckeln.
-    const physicsBoxHeight = Math.min(h_klappe_max + 0.15, 0.45);
+    const physicsBoxHeight = h_klappe_max + 0.10;
 
     let particlesOnBelt = 0;
     for (let p of particles) {
@@ -258,7 +230,6 @@ function updatePhysics(dt, isWarmup = false) {
 
     if (!isWarmup) beltOffset += anim_v_belt * dt;
 
-    // --- GAP SPAWNER ---
     if (!isWarmup) {
         const colWidth = currentSimRadius * 1.5;
         const numCols = Math.floor((L_box - 0.04) / colWidth);
@@ -273,7 +244,6 @@ function updatePhysics(dt, isWarmup = false) {
             }
         }
 
-        // Bei großer Höhe Batch-Größe fest auf max. 2 begrenzen, um Überdruck-Stöße zu verhindern
         const spawnBatchSize = anim_v_belt > 0.0001
             ? Math.max(1, Math.min(2, Math.ceil(anim_v_belt * 1.5)))
             : 1;
@@ -294,7 +264,6 @@ function updatePhysics(dt, isWarmup = false) {
                     let py = targetY - (s * currentSimRadius * 1.2);
                     let newP = new Particle(px + (Math.random() - 0.5) * 0.004, py, currentSimRadius);
 
-                    // FIX 1: Reduzierter Fallimpuls verhindert Stau-Druck
                     newP.vy = -0.1;
                     particles.push(newP);
                 }
@@ -302,7 +271,6 @@ function updatePhysics(dt, isWarmup = false) {
         }
     }
 
-    // --- 1. INTEGRATION ---
     const targetVx = anim_v_belt * Math.cos(alpha);
     const targetVy = anim_v_belt * Math.sin(alpha);
 
@@ -310,7 +278,7 @@ function updatePhysics(dt, isWarmup = false) {
     const effective_h_silo = Math.min(h_silo_val, 4.0);
 
     const isMoving = anim_v_belt > 0.0001;
-    const a_silo = isMoving ? (effective_h_silo * 5.0) : 0;
+    const a_silo = effective_h_silo * 5.0;
 
     for (let p of particles) {
         p.prevX = p.x;
@@ -325,7 +293,6 @@ function updatePhysics(dt, isWarmup = false) {
 
             p.vy -= current_g * dt;
 
-            // Im Kasten das Nachstürzen hart abfangen, egal wie hoch das Silo ist
             if (p.x <= L_box) {
                 if (p.vy < -1.2) p.vy = -1.2;
             } else {
@@ -367,7 +334,6 @@ function updatePhysics(dt, isWarmup = false) {
         }
     }
 
-    // --- 2. STARRER PBD-SOLVER ---
     const SOLVER_ITERATIONS = 10;
 
     for (let iter = 0; iter < SOLVER_ITERATIONS; iter++) {
@@ -388,23 +354,18 @@ function updatePhysics(dt, isWarmup = false) {
                     let nx = dx / dist;
                     let ny = dy / dist;
 
-                    // FIX: Faktor auf 0.35 gesenkt für 100 Hz Stabilität
                     let correction = overlap * 0.35;
                     let horizFriction = 1.0;
 
-                    // NEU: Dämpft die seitliche Kompression im Kasten
                     if (pi.x <= L_box || pj.x <= L_box) {
                         nx *= 0.5;
                     }
 
                     if (pi.state === 'box' && pj.state === 'box') {
-                        // UPDATE: Faktor 0.85 * 0.60 = 0.51 (skaliert mu_i = 0.50 auf das Verhalten von 0.30)
                         horizFriction = Math.max(0.1, 1.0 - mu_i * 0.51);
 
-                        // FIX 2: Gleitende Versteifung bei langsamen Geschwindigkeiten (< 0.5 m/s)
                         if (anim_v_belt < 0.5) {
                             let slowFactor = 1.0 - (anim_v_belt / 0.5);
-                            // UPDATE: Faktor 1.5 * 0.60 = 0.90
                             let maxSlowFriction = Math.max(0.02, 1.0 - mu_i * 0.90);
                             horizFriction = horizFriction * (1 - slowFactor) + maxSlowFriction * slowFactor;
                         }
@@ -445,7 +406,6 @@ function updatePhysics(dt, isWarmup = false) {
         }
     }
 
-    // --- 3. GESCHWINDIGKEITEN & DÄMPFUNG ---
     for (let p of particles) {
         p.vx = (p.x - p.prevX) / dt;
         p.vy = (p.y - p.prevY) / dt;
@@ -461,7 +421,6 @@ function updatePhysics(dt, isWarmup = false) {
 
         if (p.state === 'box') {
             let relVx = p.vx - targetVx;
-            // UPDATE: Faktor 0.1 * 0.60 = 0.06
             p.vx -= relVx * (mu_i * 0.06);
 
             if (p.x <= L_box) {
@@ -469,12 +428,10 @@ function updatePhysics(dt, isWarmup = false) {
                 p.vx *= 0.85;
                 p.vy *= 0.85;
             } else if (p.x > L_box && p.x < L_box + 0.2) {
-                // NEU: Entspannungszone nach dem Schieber (verhindert das Aufquellen/Auseinanderdrücken)
-                if (p.vy > 0) p.vy *= 0.2; // Dämpft vertikales Aufsteigen beim Austritt
-                p.vx = p.vx * 0.9 + targetVx * 0.1; // Zwingt das Material sanft auf Bandgeschwindigkeit
+                if (p.vy > 0) p.vy *= 0.2;
+                p.vx = p.vx * 0.9 + targetVx * 0.1;
             }
 
-            // FIX 3 (Fortsetzung): Stufenloser Übergang in die Brems-Haftreibung bei v < 0.1 m/s
             if (anim_v_belt < 0.1) {
                 let stopFactor = 1.0 - (anim_v_belt / 0.1);
                 p.vx *= (1.0 - (mu_g * stopFactor));
@@ -484,7 +441,6 @@ function updatePhysics(dt, isWarmup = false) {
         }
     }
 
-    // --- 4. VISCOUS SHEAR ---
     for (let i = 0; i < particles.length; i++) {
         let pi = particles[i];
         if (pi.state !== 'box') continue;
@@ -502,7 +458,6 @@ function updatePhysics(dt, isWarmup = false) {
                 let meanVx = (pi.vx + pj.vx) * 0.5;
                 let meanVy = (pi.vy + pj.vy) * 0.5;
 
-                // UPDATE: Faktor 1.5 * 0.60 = 0.90
                 let shearWeight = Math.min(1.0, mu_i * 0.90);
 
                 pi.vx = pi.vx * (1 - shearWeight) + meanVx * shearWeight;
@@ -787,12 +742,20 @@ function drawConveyorCanvas() {
     const beta = Math.asin((rA_outer - rU_outer) / L);
     const gamma = alpha - beta;
 
+    const B = getVal('in_B', 0.65);
+    const shaftTotalSpan = B + 0.40; // Gesamte vertikale Spannweite der Draufsicht inkl. Wellenenden
+
+    // 1. Vertikaler Gesamtbedarf in Metern (Draufsicht + Kastenhöhe + Steigungshöhe + Puffer)
+    const sideViewHeight_m = (L * Math.abs(Math.sin(gamma))) + (h_klappe_max + 0.35);
+
+    // FIX: Die Draufsicht braucht die VOLLE Breite (shaftTotalSpan), nicht nur die Hälfte!
+    // Puffer auf 1.5 erhöht, damit das Maß "L = 3,15 m" unten sicher ins Bild passt.
+    const totalNeededHeight_m = shaftTotalSpan + sideViewHeight_m + 1.5;
+
     const padX = 140;
-    const padY = 40;
     const reservedRightSpace = 320;
     const scaleX = (W - padX - reservedRightSpace) / L;
-    const fixedSpanY = Math.max(2.5, L * Math.abs(Math.sin(gamma)) + 1.5);
-    const scaleY = (H_canvas - 100) / fixedSpanY;
+    const scaleY = (H_canvas - 80) / totalNeededHeight_m;
     const scale = Math.min(scaleX, scaleY);
 
     const cx_U = 0; const cy_U = 0;
@@ -802,8 +765,12 @@ function drawConveyorCanvas() {
     const angle_top_exact = -Math.PI / 2 + alpha;
     const angle_bot_exact = Math.PI / 2 + theta_low;
 
+    const shaftHalfSpanPx = (shaftTotalSpan / 2) * scale;
+    const cy_TopView = shaftHalfSpanPx + 40;
+
     const offsetX = padX;
-    const offsetY = H_canvas - padY - (0.5 * scale);
+    const minOffsetY = cy_TopView + shaftHalfSpanPx + (sideViewHeight_m * scale) + 40;
+    const offsetY = Math.max(H_canvas - 40 - (0.5 * scale), minOffsetY);
 
     function tx(x) { return offsetX + x * scale; }
     function ty(y) { return offsetY - y * scale; }
@@ -869,7 +836,6 @@ function drawConveyorCanvas() {
         if (p.isPolygon) {
             const sides = p.polySides;
             const radius = p.r * scale;
-
             const rot = p.angleOffset + (p.x * 15);
 
             for (let i = 0; i < sides; i++) {
@@ -1055,17 +1021,9 @@ function drawConveyorCanvas() {
 
     addHitRect('L', midX - 80, midY - 40, 160, 80);
 
-    const cy_TopView = 130;
     drawTopView(ctx, scale, tx, cy_TopView, addHitRect);
 }
 
-/*
- * [BREADCRUMB: 2026-08-14]
- * DOMÄNE: Canvas Touch & Interaction Engine
- * UPDATE: 
- * - Touch-Event-Handler (touchstart, touchmove) ergänzt für mobile Maß-Auswahl.
- * - Verhindert unabsichtliches Scrollen beim Interagieren mit Maßketten.
- */
 function handleTouch(e) {
     if (!e.touches || e.touches.length === 0) return;
     const touch = e.touches[0];
@@ -1077,37 +1035,40 @@ function bootPhysics() {
     try {
         const canvas = document.getElementById('conveyorCanvas');
         if (canvas) {
-            // Maus-Events
             canvas.addEventListener('mousemove', checkHover);
             canvas.addEventListener('click', handleCanvasClick);
             canvas.addEventListener('mouseout', () => { checkHover({ clientX: 0, clientY: 0 }); });
 
-            // NEU: Touch-Events für Smartphones & Tablets
             canvas.addEventListener('touchstart', handleTouch, { passive: true });
             canvas.addEventListener('touchmove', (e) => {
-                if (hoveredDim) {
-                    // Verhindert Page-Scroll, wenn aktiv ein Maß angefasst wird
-                    e.preventDefault();
-                }
+                if (hoveredDim) e.preventDefault();
                 handleTouch(e);
             }, { passive: false });
         }
+
         initParticles();
-        if (typeof updateGeometry === 'function') updateGeometry();
+
+        if (typeof updateGeometry === 'function') {
+            updateGeometry();
+        }
     } catch (e) {
-        console.warn("Boot Fehler.", e);
+        console.warn("Boot Hinweis:", e);
     }
 
     if (isAnimating) {
-        lastTime = performance.now();
-        animId = requestAnimationFrame(renderLoop);
+        if (!animId) {
+            lastTime = performance.now();
+            accumulator = 0;
+            animId = requestAnimationFrame(renderLoop);
+        }
     } else {
         drawConveyorCanvas();
     }
 }
 
 if (document.readyState === 'complete' || document.readyState === 'interactive') {
-    bootPhysics();
+    setTimeout(bootPhysics, 50);
 } else {
     window.addEventListener('DOMContentLoaded', bootPhysics);
+    window.addEventListener('load', bootPhysics);
 }

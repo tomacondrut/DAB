@@ -121,12 +121,14 @@ body {
     margin-bottom: 10px;
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
+    gap: 4px 0;
 }
 
     /* Feste Breite für Labels verhindert horizontales Tanzen */
     .input-group label {
         flex: 1;
-        min-width: 230px;
+        min-width: 210px;
         font-weight: 500;
         transition: color 0.2s;
         white-space: nowrap;
@@ -137,7 +139,7 @@ body {
         padding: 6px;
         border: 1px solid var(--border-color);
         border-radius: 4px;
-        width: 90px;
+        width: 85px;
         flex-shrink: 0;
         transition: all 0.2s;
     }
@@ -146,7 +148,7 @@ body {
     .input-group span.unit {
         margin-left: 8px;
         color: #666;
-        width: 45px;
+        width: 40px;
         display: inline-block;
         flex-shrink: 0;
     }
@@ -171,13 +173,21 @@ body {
     }
 
 .live-display {
-    margin-left: 10px;
+    width: 100%;
+    text-align: right;
+    margin-left: 0;
+    margin-top: 3px;
     font-style: italic;
     color: var(--primary-color);
     font-weight: bold;
-    white-space: nowrap;
-    font-size: 0.9em;
+    font-size: 0.88em;
+    line-height: 1.2;
     transition: color 0.2s;
+}
+
+#live_H_display,
+#live_geom_display {
+    text-align: left;
 }
 
 .highlight-label {

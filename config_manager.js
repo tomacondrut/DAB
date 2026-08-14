@@ -102,7 +102,8 @@ function loadDAB(event) {
 
             // Zahlenwerte setzen
             setVal('in_L', config.L);
-            setVal('in_B', config.B);
+            // NACHHER: Zwingt den Wert für das Dropdown exakt auf das "X.XX" Format
+            setVal('in_B', config.B !== undefined ? Number(config.B).toFixed(2) : undefined);
             setVal('in_b', config.b);
             setVal('in_alpha', config.alpha);
             setVal('in_DU', config.DU);
