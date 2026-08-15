@@ -66,10 +66,38 @@ function toggleAnimation() {
     }
 }
 
+
+
 function drawDimTick(ctx, x, y, isHovered) {
     ctx.beginPath(); ctx.moveTo(x - 3, y + 3); ctx.lineTo(x + 3, y - 3);
     ctx.strokeStyle = isHovered ? '#d9534f' : '#333';
     ctx.lineWidth = 0.8; ctx.stroke();
+}
+
+/*
+ * BREADCRUMB: [NEU] Zeichnet Maßpfeile tangential an einen Winkelmaßbogen
+ */
+function drawArcArrow(ctx, cx, cy, radius, angle, direction = 1, isHovered = false) {
+    ctx.save();
+    const x = cx + radius * Math.cos(angle);
+    const y = cy + radius * Math.sin(angle);
+
+    // Tangentenwinkel: Bei CCW (y nach oben in Simulation) Drehung um +/- 90°
+    const tangentAngle = angle + (direction * Math.PI / 2);
+    const arrowSize = 6;
+
+    ctx.translate(x, y);
+    ctx.rotate(tangentAngle);
+
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(-arrowSize, -arrowSize * 0.4);
+    ctx.lineTo(-arrowSize, arrowSize * 0.4);
+    ctx.closePath();
+
+    ctx.fillStyle = isHovered ? '#d9534f' : '#111111';
+    ctx.fill();
+    ctx.restore();
 }
 
 function drawDrumArrow(ctx, x, y, radius, scale, rotAngle, isHovered) {
@@ -111,6 +139,8 @@ function drawDrumArrow(ctx, x, y, radius, scale, rotAngle, isHovered) {
 
 function initParticles() {
     particles = [];
+    let ptcIdCount = 0; // <--- NEU: Lokaler Zähler für die Initialisierung
+
     const L_box = getVal('in_L_box', 0.55);
     const alpha = getVal('in_alpha', 2) * Math.PI / 180;
     const h_klappe_max = getVal('in_h_klappe_max', 0.32);
@@ -134,7 +164,11 @@ function initParticles() {
             if (py > beltY + physicsBoxHeight) break;
             let jx = px + (Math.random() - 0.5) * 0.005;
             let jy = py + (Math.random() - 0.5) * 0.005;
-            particles.push(new Particle(jx, jy, currentSimRadius));
+
+            // <--- NEU: Partikel erst in Variable legen, ID zuweisen, dann pushen
+            let newP = new Particle(jx, jy, currentSimRadius);
+            newP.id = ptcIdCount++;
+            particles.push(newP);
         }
     }
 
@@ -172,6 +206,26 @@ function renderLoop(timestamp) {
 
     animId = requestAnimationFrame(renderLoop);
 }
+
+/*
+ * DOMÄNE: Canvas Physik-Engine & Animation
+ * UPDATE:
+ * - Glatter Übergang der Partikel über die Antriebstrommel (kein vorzeitiges Verflüssigen bei x > cx_A).
+ * - Fortführung der Scherkraft-/Impulskopplung bis zum echten Abwurfradius.
+ */
+
+/*
+ * DOMÄNE: Canvas Physik-Engine & Animation
+ * BREADCRUMB: [FIX] Trommelübergang: Exakte Tangenten-Kopplung bei A_top_x, 
+ *                   kontinuierliche Abwurf-Trajektorie ohne Scherverklumpung.
+ */
+
+/*
+ * DOMÄNE: Canvas Physik-Engine & Animation
+ * BREADCRUMB: [FIX] Trommelübergang & Abwurfkinematik
+ * - Stillstand: Partikel rutschen ab dem Reibungswinkel (arctan(mu_g)) von der Trommel ab.
+ * - Betrieb: Kein Festhalten an der Trommel bei Fliehkraft-Ablösung (sauberer Wurfstrahl).
+ */
 
 function updatePhysics(dt, isWarmup = false) {
     const v_belt = isWarmup ? 0 : getVal('in_v', 0);
@@ -230,6 +284,7 @@ function updatePhysics(dt, isWarmup = false) {
 
     if (!isWarmup) beltOffset += anim_v_belt * dt;
 
+    // 1. NACHSPEISUNG IM EINLAUFKASTEN
     if (!isWarmup) {
         const colWidth = currentSimRadius * 1.5;
         const numCols = Math.floor((L_box - 0.04) / colWidth);
@@ -262,9 +317,12 @@ function updatePhysics(dt, isWarmup = false) {
                 let numToSpawn = Math.min(spawnBatchSize, Math.floor(gap / (currentSimRadius * 1.2)));
                 for (let s = 0; s < numToSpawn; s++) {
                     let py = targetY - (s * currentSimRadius * 1.2);
-                    let newP = new Particle(px + (Math.random() - 0.5) * 0.004, py, currentSimRadius);
 
+                    // <--- NEU: ID Zuweisung für laufend neu gespawnte Partikel
+                    let newP = new Particle(px + (Math.random() - 0.5) * 0.004, py, currentSimRadius);
+                    newP.id = Math.random(); // Reicht als Unique-Identifier für den Vergleich völlig aus
                     newP.vy = -0.1;
+
                     particles.push(newP);
                 }
             }
@@ -276,21 +334,17 @@ function updatePhysics(dt, isWarmup = false) {
 
     const h_silo_val = getVal('in_h_silo', 3.0);
     const effective_h_silo = Math.min(h_silo_val, 4.0);
-
     const isMoving = anim_v_belt > 0.0001;
     const a_silo = effective_h_silo * 5.0;
 
+    // 2. KINEMATIK & GRAVITATION
     for (let p of particles) {
         p.prevX = p.x;
         p.prevY = p.y;
 
         if (p.state === 'box') {
             let current_g = 9.81;
-
-            if (p.x <= L_box) {
-                current_g += a_silo;
-            }
-
+            if (p.x <= L_box) current_g += a_silo;
             p.vy -= current_g * dt;
 
             if (p.x <= L_box) {
@@ -300,17 +354,56 @@ function updatePhysics(dt, isWarmup = false) {
                 if (p.vy < fallLimit) p.vy = fallLimit;
             }
 
-            let beltY = U_top_y + Math.tan(alpha) * p.x;
-            let isTouchingBelt = (p.y <= beltY + p.r + 0.05);
+            // Gurtmitnahme auf dem ebenen Trum
+            if (p.x <= A_top_x) {
+                let beltY = U_top_y + Math.tan(alpha) * p.x;
+                let isTouchingBelt = (p.y <= beltY + p.r + 0.04);
+                if (isTouchingBelt) {
+                    let beltFriction = Math.min(1.0, mu_g * 1.2);
+                    p.vx += (targetVx - p.vx) * beltFriction;
+                    p.vy += (targetVy - p.vy) * beltFriction;
+                }
+            } else {
+                // Führung & Ablösung an der Trommelrundung
+                let dx = p.x - cx_A;
+                let dy = p.y - cy_A;
+                let dist = Math.sqrt(dx * dx + dy * dy);
 
-            if (isTouchingBelt) {
-                let beltFriction = Math.min(1.0, mu_g * 1.2);
-                p.vx += (targetVx - p.vx) * beltFriction;
-                p.vy += (targetVy - p.vy) * beltFriction;
+                // Wirkt nur, wenn physisch auf der Trommel aufliegend
+                if (dist <= rA_outer + p.r + 0.02 && dist > 0) {
+                    let nx = dx / dist;
+                    let ny = dy / dist;
+
+                    if (anim_v_belt > 0.001) {
+                        // Fliehkraft-Abwurf prüfen: Löst sich das Partikel bereits radial ab?
+                        let radialV = p.vx * nx + p.vy * ny;
+                        if (radialV <= 0.05) {
+                            let tangVx = ny * anim_v_belt;
+                            let tangVy = -nx * anim_v_belt;
+                            p.vx += (tangVx - p.vx) * Math.min(1.0, mu_g * 1.2);
+                            p.vy += (tangVy - p.vy) * Math.min(1.0, mu_g * 1.2);
+                        }
+                    } else {
+                        // STILLSTAND: Reales Coulombsches Abgleiten auf dem Zylinder
+                        let angleFromTop = Math.atan2(dx, dy); // 0 = Oben, pi/2 = Mitte Rechts
+                        let frictionAngle = Math.atan(mu_g);   // Grenzwinkel der Haftreibung
+
+                        if (angleFromTop > frictionAngle) {
+                            // Neigung ist steiler als der Reibungswinkel -> Material rutscht ab!
+                            p.vx *= 0.99;
+                            p.vy *= 0.99;
+                        } else {
+                            // Haftreibung ist stark genug -> Material ruht auf der Trommel
+                            p.vx *= (1.0 - mu_g * 0.5);
+                            p.vy *= (1.0 - mu_g * 0.5);
+                            if (Math.abs(p.vx) < 0.01) p.vx = 0;
+                        }
+                    }
+                }
             }
 
             if (!isMoving) {
-                p.vx *= (1 - mu_i * 0.1);
+                p.vx *= (1 - mu_i * 0.15);
             }
 
             p.x += p.vx * dt;
@@ -321,7 +414,9 @@ function updatePhysics(dt, isWarmup = false) {
             p.x += p.vx * dt;
             p.y += p.vy * dt;
 
-            let dx = p.x - cx_A; let dy = p.y - cy_A;
+            // Kollisionskontur der Trommel im freien Fall (Abprallen verhindern)
+            let dx = p.x - cx_A;
+            let dy = p.y - cy_A;
             let dist = Math.sqrt(dx * dx + dy * dy);
             let minDist = rA_outer + p.r;
             if (dist < minDist && p.y > cy_A - minDist) {
@@ -334,50 +429,92 @@ function updatePhysics(dt, isWarmup = false) {
         }
     }
 
+    // 3. PBD CONSTRAINT-SOLVER (Optimiert mit Spatial Hash Grid)
     const SOLVER_ITERATIONS = 10;
 
+    // Rastergröße etwas größer als der Partikeldurchmesser
+    const cellSize = currentSimRadius * 2.1;
+
     for (let iter = 0; iter < SOLVER_ITERATIONS; iter++) {
+
+        // 3.1 Spatial Grid aufbauen
+        const grid = new Map();
+
+        for (let i = 0; i < particles.length; i++) {
+            let p = particles[i];
+
+            // Raster-Koordinaten berechnen
+            let cellX = Math.floor(p.x / cellSize);
+            let cellY = Math.floor(p.y / cellSize);
+            let key = cellX + '_' + cellY;
+
+            if (!grid.has(key)) {
+                grid.set(key, []);
+            }
+            grid.get(key).push(p);
+            p.gridKey = key; // Speichern für schnellen Zugriff
+            p.cellX = cellX;
+            p.cellY = cellY;
+        }
+
+        // 3.2 Kollisionen nur innerhalb benachbarter Zellen prüfen
         for (let i = 0; i < particles.length; i++) {
             let pi = particles[i];
 
-            for (let j = i + 1; j < particles.length; j++) {
-                let pj = particles[j];
+            // Suche in der eigenen und den 8 angrenzenden Zellen
+            for (let offsetX = -1; offsetX <= 1; offsetX++) {
+                for (let offsetY = -1; offsetY <= 1; offsetY++) {
+                    let neighborKey = (pi.cellX + offsetX) + '_' + (pi.cellY + offsetY);
+                    let cellParticles = grid.get(neighborKey);
 
-                let dx = pi.x - pj.x;
-                let dy = pi.y - pj.y;
-                let distSq = dx * dx + dy * dy;
-                let allowedDist = (pi.r + pj.r) * 0.95;
+                    if (cellParticles) {
+                        for (let j = 0; j < cellParticles.length; j++) {
+                            let pj = cellParticles[j];
 
-                if (distSq < allowedDist * allowedDist && distSq > 0) {
-                    let dist = Math.sqrt(distSq);
-                    let overlap = allowedDist - dist;
-                    let nx = dx / dist;
-                    let ny = dy / dist;
+                            // Eigen-Kollision und doppelte Checks vermeiden
+                            if (pi === pj || pi.id > pj.id) continue;
+                            // Anmerkung: Partikel brauchen eine .id (einfach in initParticles p.id = index setzen), 
+                            // oder wir nutzen das Array-Objekt als Referenzvergleich.
+                            // Um Konflikte zu vermeiden, vergleichen wir hier eine temporäre ID oder Referenz.
 
-                    let correction = overlap * 0.35;
-                    let horizFriction = 1.0;
+                            let dx = pi.x - pj.x;
+                            let dy = pi.y - pj.y;
+                            let distSq = dx * dx + dy * dy;
+                            let allowedDist = (pi.r + pj.r) * 0.95;
 
-                    if (pi.x <= L_box || pj.x <= L_box) {
-                        nx *= 0.5;
-                    }
+                            if (distSq < allowedDist * allowedDist && distSq > 0) {
+                                let dist = Math.sqrt(distSq);
+                                let overlap = allowedDist - dist;
+                                let nx = dx / dist;
+                                let ny = dy / dist;
 
-                    if (pi.state === 'box' && pj.state === 'box') {
-                        horizFriction = Math.max(0.1, 1.0 - mu_i * 0.51);
+                                let correction = overlap * 0.35;
+                                let horizFriction = 1.0;
 
-                        if (anim_v_belt < 0.5) {
-                            let slowFactor = 1.0 - (anim_v_belt / 0.5);
-                            let maxSlowFriction = Math.max(0.02, 1.0 - mu_i * 0.90);
-                            horizFriction = horizFriction * (1 - slowFactor) + maxSlowFriction * slowFactor;
+                                if (pi.x <= L_box || pj.x <= L_box) {
+                                    nx *= 0.5;
+                                }
+
+                                if (pi.state === 'box' && pj.state === 'box') {
+                                    horizFriction = Math.max(0.1, 1.0 - mu_i * 0.51);
+                                    if (anim_v_belt < 0.5) {
+                                        let slowFactor = 1.0 - (anim_v_belt / 0.5);
+                                        let maxSlowFriction = Math.max(0.02, 1.0 - mu_i * 0.90);
+                                        horizFriction = horizFriction * (1 - slowFactor) + maxSlowFriction * slowFactor;
+                                    }
+                                }
+
+                                pi.x += nx * correction * horizFriction;
+                                pi.y += ny * correction;
+                                pj.x -= nx * correction * horizFriction;
+                                pj.y -= ny * correction;
+                            }
                         }
                     }
-
-                    pi.x += nx * correction * horizFriction;
-                    pi.y += ny * correction;
-                    pj.x -= nx * correction * horizFriction;
-                    pj.y -= ny * correction;
                 }
             }
 
+            // Exakte geometrische Bandgrenze
             let beltY = U_top_y + Math.tan(alpha) * pi.x;
             let klappeY = U_top_y + Math.tan(alpha) * L_box + h_klappe;
 
@@ -398,6 +535,7 @@ function updatePhysics(dt, isWarmup = false) {
 
             if (pi.x < pi.r) pi.x = pi.r;
 
+            // Schieber-Wand
             if (pi.x > L_box - pi.r && pi.x < L_box) {
                 if (h_klappe <= 0.001 || pi.y > klappeY - pi.r * 0.5) {
                     pi.x = L_box - pi.r;
@@ -406,6 +544,7 @@ function updatePhysics(dt, isWarmup = false) {
         }
     }
 
+    // 4. GESCHWINDIGKEITEN AKTUALISIEREN & DÄMPFEN
     for (let p of particles) {
         p.vx = (p.x - p.prevX) / dt;
         p.vy = (p.y - p.prevY) / dt;
@@ -434,16 +573,23 @@ function updatePhysics(dt, isWarmup = false) {
 
             if (anim_v_belt < 0.1) {
                 let stopFactor = 1.0 - (anim_v_belt / 0.1);
-                p.vx *= (1.0 - (mu_g * stopFactor));
-                p.vy *= (1.0 - (0.5 * stopFactor));
-                if (Math.abs(p.vx) < 0.01) p.vx = 0;
+                // Stillstand-Haftung nur auf dem ebenen Band (Trommel wird separat in Kinematik geregelt)
+                if (p.x <= A_top_x) {
+                    p.vx *= (1.0 - (mu_g * stopFactor));
+                    p.vy *= (1.0 - (0.5 * stopFactor));
+                    if (Math.abs(p.vx) < 0.01) p.vx = 0;
+                }
             }
         }
     }
 
+    // 5. VISKOSER IMPULSAUSTAUSCH (Entkopplung an der Trommelspitze)
     for (let i = 0; i < particles.length; i++) {
         let pi = particles[i];
         if (pi.state !== 'box') continue;
+
+        // Fading der Scherkräfte: Auf dem Band 1.0, fadet an der Trommelrundung sauber aus
+        let supportI = (pi.x <= A_top_x) ? 1.0 : Math.max(0.0, 1.0 - (pi.x - A_top_x) / (rA_outer * 0.5));
 
         for (let j = i + 1; j < particles.length; j++) {
             let pj = particles[j];
@@ -455,22 +601,34 @@ function updatePhysics(dt, isWarmup = false) {
             let allowedDist = (pi.r + pj.r) * 1.1;
 
             if (distSq < allowedDist * allowedDist) {
-                let meanVx = (pi.vx + pj.vx) * 0.5;
-                let meanVy = (pi.vy + pj.vy) * 0.5;
+                let supportJ = (pj.x <= A_top_x) ? 1.0 : Math.max(0.0, 1.0 - (pj.x - A_top_x) / (rA_outer * 0.5));
+                let pairSupport = Math.min(supportI, supportJ);
+                let shearWeight = Math.min(1.0, mu_i * 0.90) * pairSupport;
 
-                let shearWeight = Math.min(1.0, mu_i * 0.90);
+                if (shearWeight > 0.01) {
+                    let meanVx = (pi.vx + pj.vx) * 0.5;
+                    let meanVy = (pi.vy + pj.vy) * 0.5;
 
-                pi.vx = pi.vx * (1 - shearWeight) + meanVx * shearWeight;
-                pi.vy = pi.vy * (1 - shearWeight) + meanVy * shearWeight;
-                pj.vx = pj.vx * (1 - shearWeight) + meanVx * shearWeight;
-                pj.vy = pj.vy * (1 - shearWeight) + meanVy * shearWeight;
+                    pi.vx = pi.vx * (1 - shearWeight) + meanVx * shearWeight;
+                    pi.vy = pi.vy * (1 - shearWeight) + meanVy * shearWeight;
+                    pj.vx = pj.vx * (1 - shearWeight) + meanVx * shearWeight;
+                    pj.vy = pj.vy * (1 - shearWeight) + meanVy * shearWeight;
+                }
             }
         }
     }
 
+    // 6. PHASENÜBERGANG IN DEN FREIEN WURF ('fall')
     for (let p of particles) {
         if (p.state === 'box' && p.x > cx_A) {
-            p.state = 'fall';
+            let dx = p.x - cx_A;
+            let dy = p.y - cy_A;
+            let dist = Math.sqrt(dx * dx + dy * dy);
+
+            // Übergang in freien Fall, wenn Abstand zur Trommel abreißt (> 5cm) oder der Trommel-Äquator (dy < 0) passiert ist
+            if (dist > rA_outer + p.r + 0.05 || dy < 0) {
+                p.state = 'fall';
+            }
         }
     }
 
@@ -927,22 +1085,58 @@ function drawConveyorCanvas() {
     ctx.fillText(`L_Box = ${L_box.toFixed(2).replace('.', ',')} m`, (lx1 + lx2) / 2, dimY_Lbox - 4);
     addHitRect('L_box', lx1, dimY_Lbox - 30, lx2 - lx1, 40);
 
+    // =========================================================================
+    // HÖHEN- & WINKELBEMASSUNG (H & alpha)
+    // BREADCRUMB: [UPDATE] Untere Winkellinie ist die durchgehende Hilfslinie von U_top,
+    //             obere Linie ist die Bandoberkante. Maßbogen liegt rechts von H.
+    // =========================================================================
+    // =========================================================================
+    // HÖHEN- & WINKELBEMASSUNG (H & alpha)
+    // BREADCRUMB: [UPDATE] Bogenradius um Textbreite von H erweitert, um Überdeckung zu verhindern
+    // =========================================================================
     let colorH = hoveredDim === 'H' ? '#d9534f' : dimColor;
-    const dimX_H = Math.max(tx(cx_A) + 120, ax_top + 130);
-    const dimX_Alpha = dimX_H + 90;
+    let isHoverAlpha = (hoveredDim === 'alpha');
+    let colorAlpha = isHoverAlpha ? '#d9534f' : '#888888';
+    let arcLineColor = isHoverAlpha ? '#d9534f' : '#222222';
+
+    const dimX_H = Math.max(tx(cx_A) + 70, ax_top + 75);
+
+    // 1. Scheitelpunkt an U_top
+    const centerArcX = ux_top;
+    const centerArcY = uy_top;
+
+    // 2. Untere Hilfslinie (von U_top horizontal nach rechts)
+    // BREADCRUMB: [FIX] Ausreichend Abstand nach rechts, damit Bogen hinter dem H-Text liegt
+    const hTextOffsetPx = 95; // Platzbedarf für Maßtext "H = X,XX m"
+    const arcRadius = (dimX_H - ux_top) + hTextOffsetPx;
+    const horizLineLen = arcRadius + 25;
 
     ctx.beginPath();
-    ctx.moveTo(ux_top, uy_top); ctx.lineTo(dimX_Alpha + 20, uy_top);
-    ctx.strokeStyle = colorH; ctx.lineWidth = 0.5; ctx.setLineDash([8, 4]); ctx.stroke();
+    ctx.moveTo(ux_top, uy_top);
+    ctx.lineTo(ux_top + horizLineLen, uy_top);
+    ctx.strokeStyle = isHoverAlpha ? colorAlpha : colorH;
+    ctx.lineWidth = 0.5;
+    ctx.setLineDash([8, 4]);
+    ctx.stroke();
     ctx.setLineDash([]);
-    ctx.beginPath();
-    ctx.moveTo(ax_top, ay_top); ctx.lineTo(dimX_H + 5, ay_top);
-    ctx.strokeStyle = colorH; ctx.lineWidth = 0.5; ctx.stroke();
 
+    // 3. Obere Hilfslinie für H (von A_top horizontal bis zur H-Maßlinie)
     ctx.beginPath();
-    ctx.moveTo(dimX_H, uy_top); ctx.lineTo(dimX_H, ay_top);
-    ctx.strokeStyle = hoveredDim === 'H' ? '#d9534f' : '#0056b3'; ctx.lineWidth = hoveredDim === 'H' ? 1.2 : 0.8; ctx.stroke();
-    drawDimTick(ctx, dimX_H, uy_top, hoveredDim === 'H'); drawDimTick(ctx, dimX_H, ay_top, hoveredDim === 'H');
+    ctx.moveTo(ax_top, ay_top);
+    ctx.lineTo(dimX_H + 15, ay_top);
+    ctx.strokeStyle = colorH;
+    ctx.lineWidth = 0.5;
+    ctx.stroke();
+
+    // 4. Vertikale H-Maßlinie
+    ctx.beginPath();
+    ctx.moveTo(dimX_H, uy_top);
+    ctx.lineTo(dimX_H, ay_top);
+    ctx.strokeStyle = hoveredDim === 'H' ? '#d9534f' : '#0056b3';
+    ctx.lineWidth = hoveredDim === 'H' ? 1.2 : 0.8;
+    ctx.stroke();
+    drawDimTick(ctx, dimX_H, uy_top, hoveredDim === 'H');
+    drawDimTick(ctx, dimX_H, ay_top, hoveredDim === 'H');
 
     const textH = `H = ${typeof currentH !== 'undefined' ? currentH.toFixed(2).replace('.', ',') : 0} m`;
     const midY_H = (uy_top + ay_top) / 2;
@@ -950,29 +1144,63 @@ function drawConveyorCanvas() {
     ctx.fillStyle = hoveredDim === 'H' ? '#d9534f' : '#0056b3';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
+    ctx.font = techFont;
     ctx.fillText(textH, dimX_H + 8, midY_H);
 
-    addHitRect('H', dimX_H - 10, Math.min(uy_top, ay_top), 100, Math.abs(uy_top - ay_top));
+    addHitRect('H', dimX_H - 10, Math.min(uy_top, ay_top), 90, Math.max(20, Math.abs(uy_top - ay_top)));
 
-    let colorAlpha = hoveredDim === 'alpha' ? '#d9534f' : dimColor;
-    const ey = uy_top - Math.tan(alpha) * (dimX_Alpha - ux_top);
+    // 5. Obere geneigte Winkellinie (ab A_top in Flucht der Bandoberkante)
+    const slantDistToArc = arcRadius / (Math.cos(alpha) || 1) + 20;
+    const slantEndX = ux_top + Math.cos(alpha) * slantDistToArc;
+    const slantEndY = uy_top - Math.sin(alpha) * slantDistToArc;
 
     ctx.beginPath();
-    ctx.moveTo(ax_top, ay_top); ctx.lineTo(dimX_Alpha + 15, ey);
-    ctx.strokeStyle = colorAlpha; ctx.lineWidth = 0.5; ctx.setLineDash([8, 4]); ctx.stroke();
+    ctx.moveTo(ax_top, ay_top);
+    ctx.lineTo(slantEndX, slantEndY);
+    ctx.strokeStyle = colorAlpha;
+    ctx.lineWidth = 0.5;
+    ctx.setLineDash([6, 3]);
+    ctx.stroke();
     ctx.setLineDash([]);
 
-    ctx.beginPath();
-    ctx.moveTo(dimX_Alpha, uy_top); ctx.lineTo(dimX_Alpha, ey);
-    ctx.strokeStyle = hoveredDim === 'alpha' ? '#d9534f' : '#111'; ctx.lineWidth = hoveredDim === 'alpha' ? 1.2 : 0.6; ctx.stroke();
-    drawDimTick(ctx, dimX_Alpha, uy_top, hoveredDim === 'alpha'); drawDimTick(ctx, dimX_Alpha, ey, hoveredDim === 'alpha');
+    // 6. Maßbogen & Pfeile (rechts vom Text H)
+    if (alpha_deg > 0.05) {
+        ctx.beginPath();
+        ctx.arc(centerArcX, centerArcY, arcRadius, 0, -alpha, true);
+        ctx.strokeStyle = arcLineColor;
+        ctx.lineWidth = isHoverAlpha ? 1.4 : 0.8;
+        ctx.stroke();
 
-    const textAlpha = `${alpha_deg.toFixed(2).replace('.', ',')}°`;
-    ctx.textAlign = 'left'; ctx.textBaseline = 'bottom';
-    ctx.fillStyle = hoveredDim === 'alpha' ? '#d9534f' : '#111';
-    ctx.fillText(textAlpha, dimX_Alpha + 8, uy_top - 6);
-    addHitRect('alpha', dimX_Alpha - 10, Math.min(uy_top, ey) - 20, 60, Math.abs(uy_top - ey) + 40);
+        if (alpha_deg >= 0.5 && typeof drawArcArrow === 'function') {
+            drawArcArrow(ctx, centerArcX, centerArcY, arcRadius, 0, -1, isHoverAlpha);
+            drawArcArrow(ctx, centerArcX, centerArcY, arcRadius, -alpha, 1, isHoverAlpha);
+        }
 
+        // 7. Maßtext mittig außerhalb des Bogens
+        const midAngle = -alpha / 2;
+        const textRadius = arcRadius + 14;
+        const textAlphaX = centerArcX + Math.cos(midAngle) * textRadius;
+        const textAlphaY = centerArcY + Math.sin(midAngle) * textRadius;
+
+        const textAlpha = `α = ${alpha_deg.toFixed(2).replace('.', ',')}°`;
+        ctx.fillStyle = isHoverAlpha ? '#d9534f' : '#111111';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        ctx.font = '12px Consolas, "Courier New", monospace';
+        ctx.fillText(textAlpha, textAlphaX, textAlphaY);
+
+        addHitRect('alpha', textAlphaX - 4, textAlphaY - 10, 80, 20);
+    } else {
+        // Fallback bei alpha = 0°
+        const textAlphaX = dimX_H + hTextOffsetPx + 10;
+        const textAlphaY = uy_top - 12;
+        ctx.fillStyle = isHoverAlpha ? '#d9534f' : '#111111';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        ctx.font = '12px Consolas, "Courier New", monospace';
+        ctx.fillText(`α = 0,00°`, textAlphaX, textAlphaY);
+        addHitRect('alpha', textAlphaX - 4, textAlphaY - 10, 75, 20);
+    }
     let colorL = hoveredDim === 'L' ? '#d9534f' : dimColor;
     ctx.lineWidth = 0.5; ctx.strokeStyle = colorL;
 

@@ -474,21 +474,26 @@ body {
             margin: 0 !important;
         }
 
-    /* Kapitel-Header: Info-Buttons unter den Titel setzen statt Float-Überlappung */
+    /* Kapitel-Header */
     .chapter-title {
-        display: flex;
-        flex-wrap: wrap;
-        align-items: center;
-        gap: 6px;
+        flex-direction: column !important;
+        align-items: flex-start !important;
+        gap: 8px !important;
         font-size: 1.0em;
     }
 
-        .chapter-title .info-btn {
-            float: none !important;
-            margin: 0 !important;
-            font-size: 11px !important;
-            padding: 3px 8px !important;
-        }
+    .chapter-actions {
+        width: 100% !important;
+        display: flex !important;
+        flex-wrap: wrap !important;
+    }
+
+    .chapter-title .info-btn {
+        float: none !important;
+        margin: 0 !important;
+        font-size: 11px !important;
+        padding: 3px 8px !important;
+    }
 
     /* 2 Spalten Desktop -> 1 Spalte Mobil */
     .two-col-grid {
@@ -500,70 +505,65 @@ body {
             width: 100%;
         }
 
-    /* FORMULAR-FELDER: Label oben, Input + Unit + i-Button in einer Zeile darunter */
+    /* 
+     * FORMULAR-FELDER: 
+     * BREADCRUMB: [FIX] display: none wird respektiert, damit inaktive Durchsatz-Modi ausgeblendet bleiben 
+     */
+    .input-group[style*="display: none"],
+    .input-group[style*="display:none"] {
+        display: none !important;
+    }
+
     .input-group {
-        display: flex;
-        flex-direction: column;
-        align-items: flex-start;
-        margin-bottom: 12px;
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: flex-start !important;
+        margin-bottom: 15px !important;
+        gap: 4px !important;
     }
 
         .input-group label {
             width: 100% !important;
             min-width: 0 !important;
             max-width: 100% !important;
-            font-size: 0.9em;
-            white-space: normal;
-            margin-bottom: 4px;
+            font-size: 0.9em !important;
+            white-space: normal !important;
+            margin-bottom: 2px !important;
+            display: block !important;
         }
 
-        /* Container für Input + Einheit + Info-Button */
+            .input-group label mjx-container {
+                display: inline-block !important;
+            }
+
         .input-group input[type="number"],
         .input-group select {
-            width: 120px !important;
-            font-size: 16px !important; /* Verhindert Auto-Zoom auf iPhone */
+            display: inline-block !important;
+            width: 110px !important;
+            font-size: 16px !important; /* Verhindert Auto-Zoom auf iOS */
             padding: 6px 8px !important;
         }
 
-    /* Zeilen-Ausrichtung für Steuerelemente */
-    .input-group {
-        display: grid;
-        grid-template-columns: 1fr auto auto auto;
-        grid-template-areas:
-            "lbl lbl lbl lbl"
-            "inp unt btn live";
-        align-items: center;
-        gap: 4px 6px;
-    }
-
-        .input-group label {
-            grid-area: lbl;
-        }
-
-        .input-group input,
-        .input-group select {
-            grid-area: inp;
-            justify-self: start;
-        }
-
         .input-group span.unit {
-            grid-area: unt;
+            display: inline-block !important;
+            margin-left: 6px !important;
             width: auto !important;
-            margin-left: 2px;
         }
 
         .input-group .info-btn {
-            grid-area: btn;
-            margin-left: 4px;
+            display: inline-flex !important;
+            margin-left: 6px !important;
+            vertical-align: middle !important;
         }
 
         .input-group .live-display {
-            grid-area: live;
-            margin-left: 6px;
-            font-size: 0.85em;
+            margin-left: 0 !important;
+            margin-top: 4px !important;
+            text-align: left !important;
+            font-size: 0.85em !important;
         }
 
-    /* Canvas Bedienelemente */
+    /* Canvas Controls */
     .anim-btn {
         width: 36px;
         height: 36px;
