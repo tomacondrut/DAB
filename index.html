@@ -13,6 +13,7 @@
     <div class="tool-container">
         <div class="tab-buttons">
             <button class="tab-btn active" id="tab_btn_eingaben" onclick="switchTab('eingaben')">Eingaben & Geometrie</button>
+            <button class="tab-btn" id="tab_btn_silo" onclick="switchTab('silo')">Silo Layout & Drücke</button>
             <button class="tab-btn" id="tab_btn_ergebnisse" onclick="switchTab('ergebnisse')">Berechnungen & Ergebnisse</button>
         </div>
 
@@ -99,11 +100,6 @@
                         </div>
                     </div>
                     <div class="col">
-                        <div class="input-group">
-                            <label id="lbl_h_silo">Silo-Füllhöhe (\(h_{Silo}\))</label>
-                            <input type="number" id="in_h_silo" value="3.00" step="0.1" min="0" title="Relevant für den Bodendruck">
-                            <span class="unit">m</span>
-                        </div>
                         <div class="input-group">
                             <label id="lbl_L_box">Einlauflänge Kasten (\(L_{Box}\))</label>
                             <input type="number" id="in_L_box" value="0.55" step="0.05" min="0.30" max="1.00" oninput="updateGeometry()" onchange="resetBoxParticles()">
@@ -227,14 +223,169 @@
             <button class="calc-btn" onclick="calculate()">DAB-Gesamtberechnung durchführen</button>
         </div>
 
+
+        <!-- NEUER TAB: SILO LAYOUT -->
+        <div id="silo" class="tab-content">
+            <div class="chapter-card">
+                <h3 class="chapter-title">
+                    <span>Geometrie & Auslauftrichter (Hopper)</span>
+                    <div class="chapter-actions">
+                        <button class="info-btn btn-engine" style="background: #2c3e50; width: auto; padding: 3px 10px; border-radius: 4px;" type="button" onclick="openModal('modal_silo_info')">Theorie & Janssen-Gewölbe ℹ️</button>
+                        <button class="info-btn btn-engine" style="background: #0056b3; width: auto; padding: 3px 10px; border-radius: 4px; margin-left: 5px;" type="button" onclick="openSiloCalcModal()">Rechenschritte anzeigen 🧮</button>
+                    </div>
+                </h3>
+                <div class="canvas-wrapper">
+                    <canvas id="siloCanvas" width="900" height="450" style="cursor: crosshair;"></canvas>
+                </div>
+
+                <div class="two-col-grid" style="margin-top: 20px;">
+                    <!-- Spalte 1: Silo Dimensionen -->
+                    <div class="col" style="background: #f9f9f9; padding: 15px; border-radius: 6px; border: 1px solid #eee;">
+                        <h4 style="margin-top: 0; color: #2c3e50;">Hauptabmessungen Silo</h4>
+                        <!-- BREADCRUMB: [UPDATE] min/max-Attribute an Number-Inputs der Silo-Hauptabmessungen ergänzt -->
+                        <div class="input-group">
+                            <label id="lbl_silo_L">Länge (X)</label>
+                            <input type="range" id="sl_silo_L" min="1" max="10" step="0.1" value="3" oninput="syncSilo('L', this.value)">
+                            <input type="number" id="in_silo_L" min="1" max="10" value="3.0" step="0.1" oninput="syncSilo('L', this.value, true)" style="width: 65px; margin-left: 10px;">
+                            <span class="unit">m</span>
+                        </div>
+                        <div class="input-group">
+                            <label id="lbl_silo_B">Breite (Y)</label>
+                            <input type="range" id="sl_silo_B" min="1" max="10" step="0.1" value="3" oninput="syncSilo('B', this.value)">
+                            <input type="number" id="in_silo_B" min="1" max="10" value="3.0" step="0.1" oninput="syncSilo('B', this.value, true)" style="width: 65px; margin-left: 10px;">
+                            <span class="unit">m</span>
+                        </div>
+                        <div class="input-group">
+                            <label id="lbl_silo_H">Gesamthöhe (Z)</label>
+                            <input type="range" id="sl_silo_H" min="1" max="20" step="0.1" value="10" oninput="syncSilo('H', this.value)">
+                            <input type="number" id="in_silo_H" min="1" max="20" value="10.0" step="0.1" oninput="syncSilo('H', this.value, true)" style="width: 65px; margin-left: 10px;">
+                            <span class="unit">m</span>
+                        </div>
+                    </div>
+
+                    <!-- Spalte 2: Auslauf & Trichter -->
+                    <div class="col" style="background: #f9f9f9; padding: 15px; border-radius: 6px; border: 1px solid #eee;">
+                        <h4 style="margin-top: 0; color: #2c3e50;">Auslaufkanal & Schrägen</h4>
+                        <div class="input-group">
+                            <label id="lbl_out_L">Auslauf Länge (X)</label>
+                            <input type="range" id="sl_out_L" min="0.2" max="1.0" step="0.05" value="0.55" oninput="syncSilo('oL', this.value)">
+                            <input type="number" id="in_out_L" value="0.55" step="0.05" max="1.0" oninput="syncSilo('oL', this.value, true)" style="width: 65px; margin-left: 10px;">
+                            <span class="unit">m</span>
+                        </div>
+                        <div class="input-group">
+                            <label id="lbl_out_B">Auslauf Breite (Y)</label>
+                            <input type="range" id="sl_out_B" min="0.2" max="1.0" step="0.05" value="0.45" oninput="syncSilo('oB', this.value)">
+                            <input type="number" id="in_out_B" value="0.45" step="0.05" max="1.0" oninput="syncSilo('oB', this.value, true)" style="width: 65px; margin-left: 10px;">
+                            <span class="unit">m</span>
+                        </div>
+                        <div class="input-group">
+                            <label id="lbl_out_x">Offset X (Mitte-Mitte)</label>
+                            <input type="range" id="sl_out_x" min="-4.9" max="4.9" step="0.05" value="0" oninput="syncSilo('ox', this.value)">
+                            <input type="number" id="in_out_x" value="0.00" step="0.05" oninput="syncSilo('ox', this.value, true)" style="width: 65px; margin-left: 10px;">
+                            <span class="unit">m</span>
+                        </div>
+                        <div class="input-group">
+                            <label id="lbl_out_y">Offset Y (Mitte-Mitte)</label>
+                            <input type="range" id="sl_out_y" min="-4.9" max="4.9" step="0.05" value="0" oninput="syncSilo('oy', this.value)">
+                            <input type="number" id="in_out_y" value="0.00" step="0.05" oninput="syncSilo('oy', this.value, true)" style="width: 65px; margin-left: 10px;">
+                            <span class="unit">m</span>
+                        </div>
+
+                        <div class="toggle-group" style="margin-top: 15px;">
+                            <label><input type="radio" name="hop_type" value="2" onchange="drawSiloCanvas()"> 2 Wände (Keil)</label>
+                            <label><input type="radio" name="hop_type" value="4" checked onchange="drawSiloCanvas()"> 4 Wände (Pyramide)</label>
+                        </div>
+                        <!-- BREADCRUMB: [UPDATE] Standard-Trichterwinkel auf 45° gesetzt -->
+                        <div class="input-group">
+                            <label id="lbl_hop_a">Trichter-Neigung (\(\alpha_{Hop}\))</label>
+                            <input type="range" id="sl_hop_a" min="30" max="85" step="1" value="45" oninput="syncSilo('ha', this.value)">
+                            <input type="number" id="in_hop_a" value="45" step="1" max="85" oninput="syncSilo('ha', this.value, true)" style="width: 65px; margin-left: 10px;">
+                            <span class="unit">°</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- BREADCRUMB: [UPDATE] Gegenüberstellung: Füllzustand (ohne Gewölbe / Anfahren) vs. Fließzustand (mit Gewölbe / Dauerbetrieb) -->
+                <!-- Schüttgutmechanik & Bodendruck (Janssen) -->
+                <div style="background: #eafaf1; padding: 15px; border-radius: 6px; border: 1px solid #009B4C; margin-top: 15px;">
+                    <h4 style="margin-top: 0; color: #2c3e50;">Schüttgutmechanik & Bodendruck am Auslauf (Janssen)</h4>
+                    <div class="two-col-grid">
+                        <div class="col">
+                            <div class="input-group">
+                                <label id="lbl_silo_rho">Schüttdichte (\(\rho\))</label>
+                                <input type="range" id="sl_silo_rho" min="100" max="5000" step="10" value="1600" oninput="syncSiloFriction('rho', this.value)">
+                                <input type="number" id="in_silo_rho" value="1600" step="10" min="100" max="5000" oninput="syncSiloFriction('rho', this.value, true)" style="width: 75px; margin-left: 10px;">
+                                <span class="unit">kg/m³</span>
+                            </div>
+                            <div class="input-group">
+                                <label id="lbl_silo_mu_i">Innere Reibung (\(\mu_i\))</label>
+                                <input type="range" id="sl_silo_mu_i" min="0.30" max="1.00" step="0.05" value="0.50" oninput="syncSiloFriction('mu_i', this.value)">
+                                <input type="number" id="in_silo_mu_i" value="0.50" step="0.05" min="0.30" max="1.00" oninput="syncSiloFriction('mu_i', this.value, true)" style="width: 75px; margin-left: 10px;">
+                                <span class="unit">-</span>
+                            </div>
+                            <div class="input-group">
+                                <label id="lbl_silo_mu_w">Wandreibung (\(\mu_w\))</label>
+                                <input type="range" id="sl_silo_mu_w" min="0.10" max="1.00" step="0.05" value="0.40" oninput="syncSiloFriction('mu_w', this.value)">
+                                <input type="number" id="in_silo_mu_w" value="0.40" step="0.05" min="0.10" max="1.00" oninput="syncSiloFriction('mu_w', this.value, true)" style="width: 75px; margin-left: 10px;">
+                                <span class="unit">-</span>
+                            </div>
+                            <p style="font-size: 0.80em; color: #666; margin: 10px 0 0 0;">
+                                Auslauffläche \(A_{\mathrm{Aus}} = L_{\mathrm{out}} \cdot B_{\mathrm{out}}\) | \(m_{\mathrm{äquiv}} = \frac{p_v \cdot A_{\mathrm{Aus}}}{g}\)
+                            </p>
+                        </div>
+
+                        <div class="col" style="display: flex; flex-direction: column; justify-content: space-between; border-left: 2px dashed #009B4C; padding-left: 15px; gap: 10px;">
+                            <!-- 1. FÜLLZUSTAND / OHNE GEWÖLBE -->
+                            <div style="background: #fff8f0; padding: 8px 12px; border-radius: 4px; border-left: 3px solid #d35400;">
+                                <div style="font-size: 0.82em; font-weight: bold; color: #d35400; text-transform: uppercase;">
+                                    1. Füllzustand / Anfahren (ohne Gewölbe)
+                                </div>
+                                <div style="display: flex; justify-content: space-between; align-items: baseline; margin-top: 2px;">
+                                    <span style="font-size: 0.9em; color: #2c3e50;">Druck \(p_{v,\mathrm{Füll}}\):</span>
+                                    <strong id="out_silo_pv_fuell" style="font-size: 1.25em; color: #d35400;">0.00 kPa</strong>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; align-items: baseline; font-size: 0.85em; color: #555;">
+                                    <span>Auslauflast:</span>
+                                    <span><strong id="out_silo_f_fuell_tonnes" style="color: #2c3e50;">0.00 t</strong> <span id="out_silo_f_fuell_kn">(0.00 kN)</span></span>
+                                </div>
+                            </div>
+
+                            <!-- 2. FLIESSZUSTAND / MIT GEWÖLBE -->
+                            <div style="background: #ffffff; padding: 8px 12px; border-radius: 4px; border-left: 3px solid #009B4C; border: 1px solid #d4edda; border-left-width: 3px;">
+                                <div style="font-size: 0.82em; font-weight: bold; color: #009B4C; text-transform: uppercase;">
+                                    2. Fließbetrieb (mit Entlastungsgewölbe)
+                                </div>
+                                <div style="display: flex; justify-content: space-between; align-items: baseline; margin-top: 2px;">
+                                    <span style="font-size: 0.9em; color: #2c3e50;">Druck \(p_{v,\mathrm{Fließ}}\):</span>
+                                    <strong id="out_silo_pv" style="font-size: 1.25em; color: #009B4C;">0.00 kPa</strong>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; align-items: baseline; font-size: 0.85em; color: #555;">
+                                    <span>Auslauflast:</span>
+                                    <span><strong id="out_silo_f_tonnes" style="color: #0056b3;">0.00 t</strong> <span id="out_silo_f_kn">(0.00 kN)</span></span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+            <button class="calc-btn" onclick="calculate()">DAB-Gesamtberechnung durchführen</button>
+        </div>
+
+
         <div id="ergebnisse" class="tab-content">
             <div class="result-row"><div class="result-item"><div class="result-label">Streckenlast Fördergut (\(m_L'\)):</div><div class="result-value" id="out_mL">- kg/m</div><button class="info-btn" onclick="toggleInfo('info_mL')">i</button><div class="formula-box" id="info_mL"></div></div></div>
             <div class="result-row"><div class="result-item"><div class="result-label">Zusätzliche Abzugskraft (\(F_{Abzug}\)):</div><div class="result-value" id="out_FAbz">- N</div><button class="info-btn" onclick="toggleInfo('info_FAbz')">i</button><div class="formula-box" id="info_FAbz"></div></div></div>
             <div class="result-row"><div class="result-item"><div class="result-label">Steigungswiderstand (\(F_{St}\)):</div><div class="result-value" id="out_FSt">- N</div><button class="info-btn" onclick="toggleInfo('info_FSt')">i</button><div class="formula-box" id="info_FSt"></div></div></div>
             <div class="result-row"><div class="result-item"><div class="result-label">Hauptwiderstand (\(F_H\)):</div><div class="result-value" id="out_FH">- N</div><button class="info-btn" onclick="toggleInfo('info_FH')">i</button><div class="formula-box" id="info_FH"></div></div></div>
+
+            <!-- HIER FEHLTE DIE ZEILE FÜR FW: -->
             <div class="result-row"><div class="result-item"><div class="result-label">Gesamtwiderstand (\(F_W\)):</div><div class="result-value" id="out_FW">- N</div><button class="info-btn" onclick="toggleInfo('info_FW')">i</button><div class="formula-box" id="info_FW"></div></div></div>
+
             <div class="result-row"><div class="result-item"><div class="result-label">Leistung an Trommel (\(P_W\)):</div><div class="result-value" id="out_PW">- W</div><button class="info-btn" onclick="toggleInfo('info_PW')">i</button><div class="formula-box" id="info_PW"></div></div></div>
-            <div class="result-row"><div class="result-item"><div class="result-label">Erf. Motorleistung (\(P_{M,erf}\)):</div><div class="result-value" id="out_PM">- kW</div><button class="info-btn" onclick="toggleInfo('info_PM')">i</button><div class="formula-box" id="info_PM"></div></div></div>
+
+            <div class="result-row" style="background-color: #fef9e7; border-left: 4px solid #e67e22;"><div class="result-item"><div class="result-label" style="color: #d35400;">Erf. Motorleistung (Anfahren):</div><div class="result-value" id="out_PM_Anfahr" style="color:#d35400;">- kW</div><button class="info-btn" style="background:#e67e22;" onclick="toggleInfo('info_PM_Anfahr')">i</button><div class="formula-box" id="info_PM_Anfahr"></div></div></div>
+            <div class="result-row" style="background-color: #eafaf1; border-left: 4px solid #009B4C;"><div class="result-item"><div class="result-label" style="color: #009B4C;">Erf. Motorleistung (Fließbetrieb):</div><div class="result-value" id="out_PM" style="color:#009B4C;">- kW</div><button class="info-btn" style="background:#009B4C;" onclick="toggleInfo('info_PM')">i</button><div class="formula-box" id="info_PM"></div></div></div>
         </div>
     </div>
 
@@ -292,22 +443,33 @@
     </div>
 
     <div id="modal_abzug" class="modal-overlay" style="display:none;">
-        <div class="modal-content">
+        <div class="modal-content" style="max-width: 800px;">
             <span class="modal-close" onclick="closeModal('modal_abzug')">&times;</span>
             <h2>Theorie: Berechnung der Abzugskraft</h2>
-            <p class="modal-note"><strong>Hinweis zur VDI 2322:</strong> In Abschnitt 4 ("Allgemeines") der VDI 2322 (2017) wird explizit darauf hingewiesen: <em>"Abzugsförderer werden in dieser Richtlinie nicht behandelt."</em> Die hier angewandte Berechnung basiert daher auf den Prinzipien der klassischen Schüttgutmechanik.</p>
+            <p class="modal-note"><strong>Hinweis zur VDI 2322:</strong> Abzugsförderer werden in der VDI 2322 nicht behandelt. Die hier angewandte Berechnung basiert auf der klassischen Schüttgutmechanik (Janssen/Jenike) und unterscheidet zwischen der statischen Anfahrlast und dem dynamischen Fließbetrieb.</p>
+
             <h3>1. Bodendruck der Materialsäule (\(F_{Boden}\))</h3>
-            <p>Das Gewicht des Schüttguts im Silo bzw. Einlaufkasten drückt vertikal auf den Fördergurt. Unter der vereinfachten Annahme eines hydrostatischen Drucks (ohne Silo-Wandreibungseffekte nach Janssen) berechnet sich die Normalkraft aus:</p>
-            <div class="modal-formula">$$ F_{Boden} = \rho \cdot g \cdot h_{Silo} \cdot L_{box} \cdot b $$</div>
+            <p>Der vertikale Druck \(p_v\) auf den Fördergurt unterscheidet sich je nach Betriebszustand massiv:</p>
+            <ul>
+                <li><strong>Füllzustand (Anfahren):</strong> Der Janssen-Druck aus dem Schacht wirkt nahezu ungemindert weiter nach unten, zuzüglich des Gewichts im Trichter. Dies führt zur maximalen Anfahrlast.</li>
+                <li><strong>Fließzustand (Dauerbetrieb):</strong> Es bildet sich ein radiales Spannungsfeld (Gewölbe) im Trichter. Der Druck am Auslauf wird vom Schachtdruck entkoppelt und hängt primär von der Auslaufbreite ab.</li>
+            </ul>
+            <div class="modal-formula">$$ F_{Boden} = p_v \cdot L_{box} \cdot b $$</div>
+
             <h3>2. Gurt-Bodenreibung (\(F_{Reibung}\))</h3>
-            <p>Um das Material unter der ruhenden Säule wegzuziehen, muss die Haft-/Gleitreibung zwischen dem Schüttgut und dem Gurtmaterial überwunden werden:</p>
+            <p>Um das Material wegzuziehen, muss die Reibung zwischen Schüttgut und Gurt überwunden werden:</p>
             <div class="modal-formula">$$ F_{Reibung} = F_{Boden} \cdot \mu_G $$</div>
+
             <h3>3. Innerer Scherwiderstand am Schieber (\(F_{Scherung}\))</h3>
-            <p>Am Auslassschieber muss das ablaufende Materialbett von der ruhenden Materialsäule im Kasten abgeschert werden. Hier wirkt die innere Reibung des Schüttguts auf der Querschnittsfläche des Schieberspannungsfeldes:</p>
-            <div class="modal-formula">$$ F_{Scherung} = (\rho \cdot g \cdot h_{Silo}) \cdot (b \cdot h_{Klappe}) \cdot \mu_i $$</div>
+            <p>Am Schieber muss das ablaufende Material abgeschert werden. Hierbei wirkt der <strong>horizontale Druck (\(p_h = K \cdot p_v\))</strong> auf die Querschnittsfläche des Schiebers:</p>
+            <div class="modal-formula">$$ F_{Scherung} = (K \cdot p_v) \cdot (b \cdot h_{Klappe}) \cdot \mu_i $$</div>
+
+            <h3>4. Beschleunigungswiderstand (\(F_{Beschl}\))</h3>
+            <p>Nur im Fließbetrieb relevant: Das Schüttgut muss aus der Ruhe auf die Bandgeschwindigkeit \(v\) beschleunigt werden (Impulserhaltung):</p>
+            <div class="modal-formula">$$ F_{Beschl} = \dot{m} \cdot v = (b \cdot h_{Klappe} \cdot v \cdot \rho) \cdot v $$</div>
+
             <h3>Gesamte zusätzliche Abzugskraft (\(F_{Abzug}\))</h3>
-            <p>Die gesamte Widerstandskraft, die zusätzlich zu den regulären Förderwiderständen vom Antrieb überwunden werden muss, ist die Summe aus Gurtreibung und Scherkraft:</p>
-            <div class="modal-formula">$$ F_{Abzug} = F_{Reibung} + F_{Scherung} $$</div>
+            <div class="modal-formula">$$ F_{Abzug} = F_{Reibung} + F_{Scherung} + F_{Beschl} $$</div>
         </div>
     </div>
 
@@ -414,6 +576,53 @@
             </p>
         </div>
     </div>
+    <!-- Modal: Silo Info (Janssen) -->
+    <!-- BREADCRUMB: [UPDATE] Theorie zum Janssen-Gewölbe, PDF-Link, skalierte Grafik (max. 520px) und Erklärung der Fließzustände a-d. -->
+    <div id="modal_silo_info" class="modal-overlay" style="display:none;">
+        <div class="modal-content" style="max-width: 860px;">
+            <span class="modal-close" onclick="closeModal('modal_silo_info')">&times;</span>
+
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid var(--border-color); padding-bottom: 10px; margin-bottom: 15px;">
+                <h2 style="color: #2c3e50; margin: 0;">⚙️ Silodrücke & Spannungsfelder (Janssen / Jenike)</h2>
+                <a href="spannungen.pdf" target="_blank" style="background: #e67e22; color: white; padding: 8px 15px; border-radius: 4px; text-decoration: none; font-weight: bold; font-size: 0.9em; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">📄 Original-PDF öffnen</a>
+            </div>
+
+            <!-- GRAFIK AUS PDF (Kompakt zentriert) -->
+            <div style="text-align: center; margin-bottom: 20px; padding: 10px; background: #fdfdfd; border: 1px solid #e5e5e5; border-radius: 6px;">
+                <img src="spannungsverläufe.png" alt="Spannungsverläufe a, b, c, d" style="max-width: 520px; width: 100%; height: auto; display: inline-block;">
+            </div>
+
+            <h3 style="color: #0056b3;">Die vier Spannungszustände im Silo</h3>
+            <p>Die oben abgebildeten Fälle beschreiben die fundamentalen Veränderungen der Wandnormalspannung (\(\sigma_w\)) und der Hauptspannungstrajektorien in einem Schüttgutsilo:</p>
+
+            <ul>
+                <li><strong>Fall a. Füllzustand (Aktiver Spannungszustand):</strong> Tritt unmittelbar nach dem Befüllen eines leeren Silos ein. Die Wandnormalspannung steigt im Schaft nach unten hin an und nähert sich asymptotisch einem Endwert. Die größte Hauptspannung weist im Schachtzentrum in vertikale Richtung.</li>
+                <li><strong>Fall b. Entleerungsbeginn:</strong> Sobald der Schüttgutabzug anläuft, setzt sich das Material in Bewegung. Ausgehend von der Trichterspitze nach oben bildet sich der passive Spannungszustand aus (horizontale Verdichtung bei gleichzeitiger vertikaler Entlastung).</li>
+                <li><strong>Fall c. Entleerungszustand bei Massenfluss (Voll ausgebildet):</strong> Der passive Spannungszustand erfasst den gesamten Trichter. Die größte Hauptspannung in der Trichterachse wirkt nun horizontal. Am Übergang vom Schaft zum Trichter entsteht der "Switch" als lokale Spannungsspitze auf die Silowand.</li>
+                <li><strong>Fall d. Entleerungszustand bei Kernfluss:</strong> Das Schüttgut fließt nur im zentralen Kern, während sich an den Wänden ruhende Totzonen bilden. Die Spannungsspitze tritt dort auf, wo die Fließzone auf die Silowand trifft.</li>
+            </ul>
+
+            <h3 style="color: #d35400; border-top: 1px solid #eee; padding-top: 15px; margin-top: 15px;">⚠️ Einschränkungen für die Band-Auslegung in diesem Tool</h3>
+            <p>Für die Auslegung von Dosierabzugsbändern sind folgende Randbedingungen zu beachten:</p>
+            <ul>
+                <li><strong>Extremer Anlaufwiderstand nach Befüllung (Fall a):</strong> Im initialen Füllzustand kann die Vertikalspannung an der Auslauföffnung bis zu zehnmal höher sein als im kontinuierlichen Entleerungszustand (Fall c). Das Tool berechnet die Motorleistung für den stationären Fließbetrieb. Der Antrieb muss jedoch über ein ausreichendes Losbrechmoment verfügen, um das Material unter der hohen ruhenden Füllast anfahren zu können.</li>
+                <li><strong>Silo-Statik vs. Abzugsdruck (Fall c & d):</strong> Die ausgeprägten Wandspannungsspitzen (Switch-Peaks) belasten primär die statische Silostruktur. Die vertikale Auslaufspannung im Entleerungszustand bleibt durch das sich ausbildende radiale Spannungsfeld weitgehend von den Schachtspannungen entkoppelt.</li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- Modal: Sequentielle Rechenschritte (Silo) -->
+    <!-- BREADCRUMB: [NEU] Interaktives LaTeX-Modal mit sequentiellen Formel- und Werte-Berechnungen -->
+    <div id="modal_silo_calc_steps" class="modal-overlay" style="display:none;">
+        <div class="modal-content" style="max-width: 900px;">
+            <span class="modal-close" onclick="closeModal('modal_silo_calc_steps')">&times;</span>
+            <h2 style="color: #2c3e50;">🧮 Detaillierte Berechnungsschritte: Silo-Bodendruck</h2>
+            <div id="silo_calc_steps_content" style="font-size: 1.05em; line-height: 1.5; color: #333;">
+                <!-- Wird per JS dynamisch mit LaTeX befüllt -->
+                <em>Berechnung wird durchgeführt...</em>
+            </div>
+        </div>
+    </div>
 
     <div id="modal_m_leer" class="modal-overlay" style="display:none;">
         <div class="modal-content" style="max-width: 780px;">
@@ -507,5 +716,6 @@
     <script src="pdf_export.js"></script>
     <script src="ui_math_logic.js"></script>
     <script src="canvas_physics.js"></script>
+    <script src="canvas_silo.js"></script>
 </body>
 </html>

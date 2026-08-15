@@ -332,10 +332,11 @@ function updatePhysics(dt, isWarmup = false) {
     const targetVx = anim_v_belt * Math.cos(alpha);
     const targetVy = anim_v_belt * Math.sin(alpha);
 
-    const h_silo_val = getVal('in_h_silo', 3.0);
-    const effective_h_silo = Math.min(h_silo_val, 4.0);
+    // BREADCRUMB: [UPDATE] Auflast-Beschleunigung im Einlaufkasten liest nun in_silo_H
+    const h_silo_val = getVal('in_silo_H', 6.0);
+    const effective_h_silo = Math.min(h_silo_val, 6.0);
     const isMoving = anim_v_belt > 0.0001;
-    const a_silo = effective_h_silo * 5.0;
+    const a_silo = effective_h_silo * 3.5;
 
     // 2. KINEMATIK & GRAVITATION
     for (let p of particles) {
