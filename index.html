@@ -442,11 +442,21 @@
         </div>
     </div>
 
+    <!-- Modal: Theorie Abzugskraft -->
+    <!-- BREADCRUMB: [UPDATE 2026-08-16 16:24 CEST] Direktverlinkung zur VDI 2322_2017.pdf im Modal-Header integriert (analog zu modal_silo_info).
+         Alt: Einfache <h2> ohne Flex-Header-Leiste und ohne PDF-Button. -->
     <div id="modal_abzug" class="modal-overlay" style="display:none;">
         <div class="modal-content" style="max-width: 800px;">
             <span class="modal-close" onclick="closeModal('modal_abzug')">&times;</span>
-            <h2>Theorie: Berechnung der Abzugskraft</h2>
-            <p class="modal-note"><strong>Hinweis zur VDI 2322:</strong> Abzugsförderer werden in der VDI 2322 nicht behandelt. Die hier angewandte Berechnung basiert auf der klassischen Schüttgutmechanik (Janssen/Jenike) und unterscheidet zwischen der statischen Anfahrlast und dem dynamischen Fließbetrieb.</p>
+
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid var(--border-color); padding-bottom: 10px; margin-bottom: 15px;">
+                <h2 style="color: #2c3e50; margin: 0;">Theorie: Berechnung der Abzugskraft</h2>
+                <a href="VDI 2322_2017.pdf" target="_blank" style="background: #e67e22; color: white; padding: 8px 15px; border-radius: 4px; text-decoration: none; font-weight: bold; font-size: 0.9em; box-shadow: 0 2px 4px rgba(0,0,0,0.1); white-space: nowrap;">📄 VDI 2322 öffnen</a>
+            </div>
+
+            <p class="modal-note">
+                <strong>Hinweis zur VDI 2322:</strong> Abzugsförderer werden in der <a href="VDI 2322_2017.pdf" target="_blank" style="color: #856404; font-weight: bold; text-decoration: underline;">VDI 2322 (Abschnitt 1)</a> ausdrücklich nicht behandelt. Die hier angewandte Berechnung basiert auf der klassischen Schüttgutmechanik (Janssen/Jenike) und unterscheidet zwischen der statischen Anfahrlast und dem dynamischen Fließbetrieb.
+            </p>
 
             <h3>1. Bodendruck der Materialsäule (\(F_{Boden}\))</h3>
             <p>Der vertikale Druck \(p_v\) auf den Fördergurt unterscheidet sich je nach Betriebszustand massiv:</p>
