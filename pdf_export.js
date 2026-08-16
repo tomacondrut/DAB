@@ -67,50 +67,57 @@ async function generatePDF() {
             };
         };
 
+        /*
+                 * DOMÄNE: PDF Export (html2pdf.js)
+                 * BREADCRUMB: [FIX] Diskrepanz zwischen Plot und Betriebspunkt behoben. 
+                 *             Die interne Hilfsfunktion calcPower in pdf_export.js verwendet 
+                 *             nun exakt die gleichen Jenike/Janssen-Drücke (Fließzustand) 
+                 *             und Widerstände (inkl. F_Beschl und korrekter Scherkraft mit K) 
+                 *             wie die Hauptrechnung ui_math_logic.js.
+                 *             Alte statische Druck-Approximationen wurden entfernt.
+                 */
         function calcPower(v_eval, hk_eval, p) {
-            const g = 9.81; const f = 0.020;
+            const g = 9.81;
+            const f = 0.020;
+
+            // 1. Massenstrom & Streckenlast für den jeweiligen Plot-Evaluierungspunkt
             const Iv = p.b * hk_eval * v_eval * 3600;
             const ImN = (Iv * p.rho) / 3600;
             const mL = v_eval > 0 ? ImN / v_eval : 0;
+
+            // 2. Bewegungswiderstände (identisch zur Hauptberechnung)
             const FSt = p.H_m * g * mL;
             const FH = p.L * f * g * (mL + p.m_leer);
 
-            const L_s = parseFloat(document.getElementById('in_silo_L')?.value) || 3.0;
-            const B_s = parseFloat(document.getElementById('in_silo_B')?.value) || 3.0;
-            const H_s = parseFloat(document.getElementById('in_silo_H')?.value) || 6.0;
+            // 3. Silo-Geometrie für Fließdruck aus dem DOM holen
             const out_L = parseFloat(document.getElementById('in_out_L')?.value) || 0.55;
             const out_B = parseFloat(document.getElementById('in_out_B')?.value) || 0.45;
-            const out_x = parseFloat(document.getElementById('in_out_x')?.value) || 0;
-            const out_y = parseFloat(document.getElementById('in_out_y')?.value) || 0;
-            const mu_w = parseFloat(document.getElementById('in_silo_mu_w')?.value) || (p.mu_i * 0.8);
+            const hop_alpha = (parseFloat(document.getElementById('in_hop_a')?.value) || 45) * Math.PI / 180;
 
-            const A_s = L_s * B_s;
-            const U_s = 2 * (L_s + B_s);
-            const R_hyd = (U_s > 0) ? (A_s / U_s) : 0.5;
-            const A_out = out_L * out_B;
-
-            const distsX = [L_s / 2 + out_x - out_L / 2, L_s / 2 - out_x - out_L / 2];
-            const distsY = [B_s / 2 + out_y - out_B / 2, B_s / 2 - out_y - out_B / 2];
-            const hop_type = document.querySelector('input[name="hop_type"]:checked') ? document.querySelector('input[name="hop_type"]:checked').value : '4';
-            const hop_alpha = (parseFloat(document.getElementById('in_hop_a')?.value) || 60) * Math.PI / 180;
-            const maxDist = Math.max(...distsX, hop_type === '4' ? Math.max(...distsY) : 0);
-
-            let h_trichter = maxDist * Math.tan(hop_alpha);
-            if (h_trichter > H_s) h_trichter = H_s;
-            const h_schaft = H_s - h_trichter;
-
+            // 4. Rankine Horizontaldruckbeiwert K
             const phi_i = Math.atan(p.mu_i);
             const K = (1 - Math.sin(phi_i)) / (1 + Math.sin(phi_i));
-            const denom = Math.max(0.01, mu_w * K);
-            const max_p_v = (p.rho * g * R_hyd) / denom;
-            const p_v_schaft = max_p_v * (1 - Math.exp(-(denom * h_schaft) / R_hyd));
 
-            const p_v = (p_v_schaft * (A_out / A_s)) + (p.rho * g * h_trichter * 0.4);
-            const F_Boden = p_v * p.L_box * p.b;
-            const F_Abzug = (F_Boden * p.mu_g) + (p_v * p.b * hk_eval * p.mu_i);
+            // 5. Fließdruck p_v_fliess nach Jenike (Dauerbetrieb)
+            const B_out_min = Math.min(out_L, out_B);
+            let p_v_fliess = (p.rho * g * B_out_min) / (2 * K * Math.tan(hop_alpha));
+            if (isNaN(p_v_fliess) || p_v_fliess < 0) p_v_fliess = 0;
 
+            // 6. Abzugskraft zusammenbauen (Fließzustand)
+            const A_boden = p.L_box * p.b;
+            const A_scher = p.b * hk_eval;
+
+            const F_Boden_Fliess = p_v_fliess * A_boden;
+            const p_h_Fliess = K * p_v_fliess; // WICHTIG: Horizontaler Druck für Scherung!
+            const F_Scher_Fliess = p_h_Fliess * A_scher * p.mu_i;
+            const F_Beschl = ImN * v_eval;
+
+            const F_Abzug = (F_Boden_Fliess * p.mu_g) + F_Scher_Fliess + F_Beschl;
+
+            // 7. Gesamtleistung
             const FW = p.C * FH + FSt + F_Abzug;
             const PW = FW * v_eval;
+
             return (PW / p.eta) / 1000;
         }
 
